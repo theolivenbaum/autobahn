@@ -1,52 +1,48 @@
-<p align="center">
-  <img src="https://github.com/PragmaticFlow/NBomber/blob/dev/assets/nbomber_logo.png" alt="NBomber logo" width="600px">
-</p>
+# Autobahn
 
-[![build](https://github.com/PragmaticFlow/NBomber/actions/workflows/build.yml/badge.svg)](https://github.com/PragmaticFlow/NBomber/actions/workflows/build.yml)
-[![NuGet](https://img.shields.io/nuget/v/nbomber.svg)](https://www.nuget.org/packages/nbomber/)
-[![Gitter](https://badges.gitter.im/nbomber/community.svg)](https://gitter.im/nbomber/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge)
+**Autobahn** is a load-testing framework for .NET. You write your load test as ordinary
+C# or F# — no DSL to learn — and Autobahn runs it, schedules the load, measures every
+step, and reports what happened.
 
-NBomber is a modern and flexible load-testing framework for Pull and Push scenarios, designed to test any system regardless of a protocol (HTTP/WebSockets/AMQP, etc) or a semantic model (Pull/Push).
+It is protocol-agnostic (HTTP, WebSockets, gRPC, AMQP, MQTT, SQL, Redis, anything you can
+call from .NET) and model-agnostic (pull or push). If you can write the call, you can load
+test it.
 
-NBomber is free, developer-centric, and extensible.
-Using NBomber, you can test the reliability and performance of your systems and catch performance regressions and problems earlier. 
-NBomber will help you to build resilient and performant applications that scale.
+> Autobahn is a hard fork of [NBomber](https://github.com/PragmaticFlow/NBomber) at
+> version **4.1.2**, the last release published under the Apache-2.0 license. All credit
+> for the original design and implementation goes to Anton Moldovan and the NBomber
+> contributors. Autobahn is an independent project, is not affiliated with or endorsed by
+> NBomber or PragmaticFlow, and is developed separately from here on.
 
-### Links
-- [Main web page](https://nbomber.com/)
-- [Documentation](https://nbomber.com/docs/getting-started/overview/)
-- [Roadmap](https://nbomber.com/docs/getting-started/roadmap)
-- [Chat](https://gitter.im/nbomber/community)
-- [Patreon](https://www.patreon.com/nbomber) - We appreciate every little donation. If everyone we've ever helped gave back just small donation a month, we'd be able to bring you NBomber for years and years to come.
-  If you or your company are using NBomber and willing to help keep the project sustainable, please donate via [Patreon](https://www.patreon.com/nbomber).
+## Status
 
-### Why we build NBomber and what you can do with it?
-The main reason behind NBomber is to provide a lightweight framework for writing load tests which you can use to test literally any system and simulate any production workload. We wanted to provide only a few abstractions so that we could describe any type of load and still have a simple, intuitive API.
-Another goal is to provide building blocks to validate your POC (proof of concept) projects by applying any complex load distribution.
-With NBomber you can test any PULL or PUSH system (HTTP, WebSockets, GraphQl, gRPC, SQL Databse, MongoDb, Redis etc).
-With NBomber you can convert some of your integration tests to load tests easily.
+Early. The code currently in this repository is the 4.1.2 fork point, largely unmodified.
+The rename, the ergonomics work and the feature roadmap are tracked in
+[TODO.md](TODO.md), which is the plan of record for where this goes next.
 
-NBomber as a modern framework provides:
-- Zero dependencies on protocol (HTTP/WebSockets/AMQP/SQL)
-- Zero dependencies on semantic model (Pull/Push)
-- Very flexible configuration and dead simple API
-- Cluster support
-- Real-time reporting
-- CI/CD integration
-- Plugins/extensions support
-- Data feed support
+## Why a fork
 
-### What makes it very simple?
-One of the design goals of NBomber is to keep API as minimal as possible.
-Because of this, NBomber focuses on fully utilizing programming language(C#/F#) constructs instead of reinventing a new DSL that should be learned.
-In other words, if you want to write a for loop, you don't need to learn a DSL for this.
+NBomber 4.1.2 is a small, sharp, well-factored load-testing engine, and it is the last
+version of it that is free software. Autobahn keeps that engine open under Apache-2.0 and
+takes it in its own direction:
+
+- **Open, permanently.** Apache-2.0, no paid tiers, no feature gates, no license server.
+- **Focused on the single-node engine.** Distributed/cluster execution is explicitly out
+  of scope — see [TODO.md](TODO.md).
+- **A real UI.** A first-class live web interface served by the CLI, not just a console
+  table and a static HTML file at the end.
+- **Batteries in the box.** Metrics, thresholds, and the common reporting sinks are part
+  of the project rather than separate closed packages.
+
+## Hello world
 
 ```csharp
+using NBomber.CSharp;
+
 var scenario = Scenario.Create("hello_world_scenario", async context =>
 {
-    // you can define and execute any logic here,
-    // for example: send http request, SQL query etc
-    // NBomber will measure how much time it takes to execute your logic
+    // put any logic here: an HTTP call, a SQL query, a gRPC request.
+    // Autobahn measures how long it takes and whether it succeeded.
     await Task.Delay(1_000);
 
     return Response.Ok();
@@ -62,11 +58,76 @@ NBomberRunner
     .Run();
 ```
 
-### Examples
-|Type|Language
-|--|--|
-| [NBomber](https://github.com/PragmaticFlow/NBomber/tree/dev/examples/CSharpProd) | C# |
-| [NBomber Enterprise](https://github.com/PragmaticFlow/NBomber.Enterprise.Examples) | C# |
+> The public namespaces are still `NBomber.*` at the fork point. Renaming the surface to
+> `Autobahn.*` is the first item on the roadmap.
 
-### Contributing
-Would you like to help make NBomber even better? We keep a list of issues that are approachable for newcomers under the [good-first-issue](https://github.com/PragmaticFlow/NBomber/issues?q=is%3Aopen+is%3Aissue+label%3A%22good+first+issue%22) label.
+## Core concepts
+
+| Concept | What it is |
+|--|--|
+| **Scenario** | One user journey. Runs in a loop, in parallel, for as long as the load model says. |
+| **Step** | A named, measured slice inside a scenario, so one scenario can report several latencies. |
+| **Load simulation** | The shape of the load over time: keep N copies constant, ramp them, inject at a fixed or random rate, or pause. Several compose into a plan. |
+| **Response** | What a scenario or step returns: ok/fail, an optional payload, a status code, a size in bytes. |
+| **Reporting sink** | Where real-time stats go while the test runs (InfluxDB, TimescaleDB, OTLP, your own). |
+| **Worker plugin** | Background work that runs alongside the test and contributes its own stats (e.g. ping). |
+| **Report** | The end-of-run artifact: txt, csv, md, html. |
+
+## Load simulations
+
+```csharp
+.WithLoadSimulations(
+    Simulation.RampingConstant(copies: 50, during: TimeSpan.FromSeconds(30)),
+    Simulation.KeepConstant(copies: 50, during: TimeSpan.FromMinutes(5)),
+    Simulation.RampingInject(rate: 100, interval: TimeSpan.FromSeconds(1), during: TimeSpan.FromSeconds(30)),
+    Simulation.Inject(rate: 100, interval: TimeSpan.FromSeconds(1), during: TimeSpan.FromMinutes(5)),
+    Simulation.InjectRandom(minRate: 50, maxRate: 100, interval: TimeSpan.FromSeconds(1), during: TimeSpan.FromMinutes(1)),
+    Simulation.Pause(during: TimeSpan.FromSeconds(10))
+)
+```
+
+Closed-model simulations (`RampingConstant`, `KeepConstant`) control **concurrency**: how
+many copies of the scenario are alive. Open-model simulations (`RampingInject`, `Inject`,
+`InjectRandom`) control **arrival rate**: how many iterations start per interval,
+regardless of how many are still running. Reach for the open model when you are testing a
+system's capacity, and the closed model when you are simulating a fixed population of
+users.
+
+## Building
+
+Requires the .NET SDK (see [global.json](global.json)).
+
+```bash
+dotnet restore NBomber.sln
+dotnet build NBomber.sln
+dotnet test tests/NBomber.IntegrationTests/NBomber.IntegrationTests.fsproj --filter CI!=disable
+```
+
+## Repository layout
+
+```
+src/NBomber/          the engine (F#)
+tests/                integration tests (F#, xUnit)
+examples/             runnable C# and F# examples
+performance/          benchmarks
+assets/               images
+```
+
+[CLAUDE.md](CLAUDE.md) has the architecture walkthrough and the conventions that matter
+when changing the engine.
+
+## Roadmap
+
+[TODO.md](TODO.md) — features, fixes and improvements to bring in, plus the design of the
+Tesserae-based web UI that the CLI will host.
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE). The fork point (NBomber 4.1.2) was released
+under the same license; later NBomber versions are not, and no code from them is used
+here.
+
+## Acknowledgements
+
+[NBomber](https://github.com/PragmaticFlow/NBomber) by Anton Moldovan and its contributors.
+This project would not exist without it.
