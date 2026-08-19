@@ -83,6 +83,9 @@ Not in the root build:
   not the samples. Build it explicitly: `dotnet build examples/Examples.slnx`.
 - `src/Autobahn.Ui/Autobahn.Ui.slnx` — the web UI and its contracts. Building it needs the
   Transpose compiler installed as a global tool, which a clean clone does not have.
+- `performance/Performance.slnx` — the BenchmarkDotNet project. Run it before and after any
+  change to the scheduler or the stats actor; `performance/Autobahn.Benchmarks/README.md`
+  has the baseline and the command.
 
 **CI is off.** There are no workflows at all: the inherited ones built a solution that no
 longer exists and published under the upstream package identity, so they were deleted

@@ -3,7 +3,7 @@
 This is the plan of record for Autobahn. It has three parts:
 
 0. **The foundation** — turning the fork point into what Autobahn is meant to be: a pure
-   C# library on .NET 10, with clustering removed. Done, apart from the benchmarks.
+   C# library on .NET 10, with clustering removed. Done, apart from packaging and CI.
 1. **Catch-up work** — capabilities, fixes and improvements that appeared in the upstream
    project between the 4.1.2 fork point and its current development line, captured here as
    *behaviour to build*.
@@ -28,9 +28,10 @@ implementation detail, no APIs copied verbatim, and no source. Upstream releases
 4.1.2 are not under a license this project can draw from, so every item is a specification
 to be designed and implemented independently.
 
-Sequencing: the port is done, so nothing is blocked on it any more. What does gate the
-rest is section 0.3's remaining item — there is currently no benchmark coverage of the
-scheduler or the stats actor, and both are on the path of everything in section 1.
+Sequencing: the port is done and the hot paths have benchmark coverage, so nothing here is
+blocked on the foundation any more. Within the rest, metrics (section 1) is what thresholds
+(section 2) measures against, and both feed the reporting surfaces (section 5) and the UI
+(section 8) — so they come first.
 
 ### Explicitly out of scope
 
@@ -50,8 +51,8 @@ interface and its registration API have been removed rather than left dormant.
 
 ## 0. Foundation: the C# port, .NET 10, de-clustering
 
-This section was the prerequisite for the rest, and it is done apart from the benchmark
-item in 0.3 and the packaging and CI items in 0.5. It is kept rather than deleted because
+This section was the prerequisite for the rest, and it is done apart from the packaging
+and CI items in 0.5. It is kept rather than deleted because
 what was decided here — and what was deliberately *not* changed — is what the sections
 below build on.
 
@@ -117,14 +118,12 @@ The whole engine is C#. What is left of this section is the benchmark work, call
   existing tests passing unchanged. Where a test had to change, the change is justified in
   the commit message — a silent behaviour change inside a translation is nearly impossible
   to find afterwards.
-- [ ] **Guard the hot paths with benchmarks.** The fork point's BenchmarkDotNet project
-  benchmarked F# actor prototypes that no longer exist and was deleted with the F# tree, so
-  there is currently *no* benchmark coverage. Write a C# one for the scheduler and the
-  stats actor, and treat it as a precondition for any further work on either. The port
-  already made two changes that want measuring rather than assuming: the stats mailbox is
-  now a `System.Threading.Channels` channel with a struct message instead of a
-  `ConcurrentQueue` polled every 100 ms, and the measurement path no longer allocates a
-  message object per step.
+- [x] **Guard the hot paths with benchmarks.** `performance/Autobahn.Benchmarks` covers
+  publishing a measurement, folding one into the tally, closing a reporting interval,
+  every scheduling decision and building a load plan. The claim the port made is now
+  measured: **publishing a measurement and accumulating it both allocate zero bytes**, so
+  the struct mailbox message does what it was introduced to do. Baseline numbers are in
+  that project's README; record them before touching the scheduler or the stats actor.
 - [x] **Port the tests to C#.** On TUnit. The FsCheck properties became explicit
   `[Arguments]` cases plus seeded random sweeps rather than a new property-testing
   dependency; `LoadSimulationExhaustivenessTests` replaces the exhaustiveness the F#

@@ -342,3 +342,4 @@ ASALocalRun/
 # which defaults to ./reports/{sessionId} relative to wherever the test was started.
 reports/
 TestResults/
+BenchmarkDotNet.Artifacts/

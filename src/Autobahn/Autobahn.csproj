@@ -43,6 +43,7 @@
     <ItemGroup>
         <InternalsVisibleTo Include="Autobahn.Tests" />
         <InternalsVisibleTo Include="Autobahn.Cli" />
+        <InternalsVisibleTo Include="Autobahn.Benchmarks" />
     </ItemGroup>
 
 </Project>
