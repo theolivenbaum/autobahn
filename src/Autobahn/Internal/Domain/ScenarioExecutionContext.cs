@@ -71,6 +71,9 @@ internal sealed class ScenarioExecutionContext : IScenarioContext, IDisposable
     public HostInfo HostInfo => _args.GetHostInfo();
     public ILogger Logger => _args.Logger;
     public IMetricRegistry Metrics => _args.Metrics;
+
+    /// <summary>The session's scheduling clock, which is what the two timeouts wait on.</summary>
+    public TimeProvider Time => _args.Time;
     public int InvocationNumber => _invocationNumber;
     public Dictionary<string, object> Data => _data;
     public CancellationToken CancellationToken => _iterationCts?.Token ?? _scenarioToken;

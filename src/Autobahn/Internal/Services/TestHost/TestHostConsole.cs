@@ -252,7 +252,8 @@ internal static class TestHostConsole
                             ctx.Refresh();
                         }
 
-                        await Task.Delay(1_000, cancelToken).ConfigureAwait(false);
+                        await Task.Delay(Constants.ConsoleRefreshInterval, dep.Time, cancelToken)
+                            .ConfigureAwait(false);
 
                         refreshTableCounter++;
                         if (refreshTableCounter >= Constants.ConsoleRefreshTableCounter) refreshTableCounter = 0;

@@ -265,7 +265,7 @@ internal sealed class TestHost : IDisposable
         if (isWarmUp)
         {
             GC.Collect();
-            await Task.Delay(1_000).ConfigureAwait(false);
+            await Task.Delay(Constants.WarmUpSettleDelay, _dep.Time).ConfigureAwait(false);
         }
     }
 
@@ -422,7 +422,8 @@ internal sealed class TestHost : IDisposable
                 ExecStopCommand = ExecStopCommand,
                 TestInfo = _sessionArgs.TestInfo,
                 GetHostInfo = GetCurrentHostInfo,
-                Metrics = _dep.Metrics.Registry
+                Metrics = _dep.Metrics.Registry,
+                Time = _dep.Time
             };
 
             var scheduler = new ScenarioScheduler(scnDep);

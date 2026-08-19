@@ -33,7 +33,7 @@ public class MetricsBenchmarks
         _counter = _registry.Counter("bench.counter");
         _gauge = _registry.Gauge("bench.gauge");
         _histogram = _registry.Histogram("bench.histogram");
-        _runtime = new RuntimeMetrics(_registry, NullLogger.Instance);
+        _runtime = new RuntimeMetrics(_registry, NullLogger.Instance, TimeProvider.System);
     }
 
     [GlobalCleanup]

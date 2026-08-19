@@ -23,6 +23,7 @@ namespace Autobahn.Internal.Domain.Metrics;
 internal sealed class RuntimeMetrics : IDisposable
 {
     private readonly ILogger _logger;
+    private readonly TimeProvider _time;
     private readonly Process _process = Process.GetCurrentProcess();
     private readonly Stopwatch _cpuTimer = Stopwatch.StartNew();
     private readonly SocketTraffic? _sockets;
@@ -45,13 +46,14 @@ internal sealed class RuntimeMetrics : IDisposable
     private int _lastGen0, _lastGen1, _lastGen2;
     private long _lastSent, _lastReceived;
 
-    private Timer? _timer;
+    private ITimer? _timer;
     private bool _cpuUnavailable;
     private bool _processUnavailable;
 
-    public RuntimeMetrics(MetricRegistry registry, ILogger logger)
+    public RuntimeMetrics(MetricRegistry registry, ILogger logger, TimeProvider time)
     {
         _logger = logger;
+        _time = time;
 
         _cpu = registry.Gauge(Constants.MetricCpuPercent, MetricUnit.Percent);
         _workingSet = registry.Gauge(Constants.MetricWorkingSet, MetricUnit.Megabytes);
@@ -79,7 +81,7 @@ internal sealed class RuntimeMetrics : IDisposable
     }
 
     public void Start(TimeSpan sampleInterval) =>
-        _timer = new Timer(_ => Sample(), null, sampleInterval, sampleInterval);
+        _timer = _time.CreateTimer(_ => Sample(), null, sampleInterval, sampleInterval);
 
     /// <summary>Takes one sample. Public so the final report is not missing the last window.</summary>
     public void Sample()

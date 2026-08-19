@@ -46,6 +46,12 @@ container. Absolute times will differ on your machine; the **Allocated** column 
 | `SampleRuntimeMetrics` | 151 µs | 23 KB |
 | `CloseInterval` (15 metrics) | 6.6 µs | 3.1 KB |
 
+Re-measured when the engine moved its *scheduling* onto `TimeProvider`: `PublishMeasurement`
+322 ns / 0 B, `AccumulateMeasurement` 16 ns / 0 B, every metric write 0 B, every scheduler
+decision 0 B. That is the whole reason the measurement path stayed on `Stopwatch` -
+`Stopwatch.GetTimestamp` is a static intrinsic and `TimeProvider.GetTimestamp` is a virtual
+call, and this table is what a per-measurement virtual call would have shown up in.
+
 The per-request paths allocate nothing, which is the property worth defending: a generator
 that allocates per request eventually reports its own GC pause as the target's latency. That
 covers every metric write too - a counter, a gauge and a histogram all cost about what the

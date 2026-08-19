@@ -375,9 +375,9 @@ run. `--ui-public` serves on every interface and says so loudly: this surface ca
 **The run does not know whether anyone is watching.** No client, twenty clients, a client on
 a slow link, the tab closed mid-run: the timing, the results and the exit code are identical.
 
-`autobahn export <run.json>` renders the same view against a finished run's artifact as one
-self-contained HTML file — no server, no network, one file to send someone. It is large (it
-carries the whole application), so it is a command rather than a report format.
+The web view is for watching a run happen. A finished run is read from the reports it wrote:
+the HTML one for a person, the JSON artifact for a machine. Those are written by the engine
+and are not this application — a record and a window onto a running test are different things.
 
 The web view is built by the Transpose compiler, which a clean clone does not have. A build
 without it serves a page saying so; `scripts/build-ui.sh` is the one command that changes
@@ -496,6 +496,57 @@ default: a single connection has a concurrent-stream limit, and a load test that
 measures its own queue rather than the server — which looks exactly like the server slowing
 down.
 
+### Message brokers — `Autobahn.Mqtt` and `Autobahn.Amqp`
+
+A broker is not request/response, and the interesting number is not how fast either side is —
+it is how long a message took to get from one to the other. So the publisher and the consumer
+are separate scenarios, and the pair that measures the gap between them is
+`PublishStamped` / `ReceiveStamped`:
+
+```csharp
+var publish = Scenario.Create("publish", async context =>
+        await publisher.PublishStamped("orders", $"order-{context.InvocationNumber}", context))
+    .WithInit(async _ =>
+    {
+        publisher = await AmqpChannel.ConnectAsync("amqp://localhost:5672/");
+        await publisher.DeclareQueueAsync("orders");
+    })
+    .WithLoadSimulations(Simulation.Inject(rate: 300, interval: TimeSpan.FromSeconds(1), during: TimeSpan.FromMinutes(2)));
+
+var consume = Scenario.Create("consume", async context =>
+        await consumer.ReceiveStamped(context, TimeSpan.FromSeconds(2)))
+    .WithInit(async _ =>
+    {
+        consumer = await AmqpChannel.ConnectAsync("amqp://localhost:5672/", inboxCapacity: 8192);
+        await consumer.DeclareQueueAsync("orders");
+        await consumer.ConsumeAsync("orders");
+    })
+    .WithLoadSimulations(Simulation.KeepConstant(copies: 4, during: TimeSpan.FromMinutes(2)));
+```
+
+What `consume` reports as its latency is the *delivery* latency — the time between the
+publisher sending and this consumer receiving — not the time it spent waiting for something to
+arrive. A plain `Receive` reports the waiting, which is a fact about your test rather than
+about the broker.
+
+- **A message with no stamp is a failure, not a zero.** It means something other than this test
+  is publishing to the queue, and calling that instant delivery would be the most flattering
+  possible lie.
+- **The inbox is bounded and says what it dropped.** A consumer slower than the broker delivers
+  loses messages; `Dropped` is how you find out, and every latency after a drop is optimistic.
+- **MQTT pools connections; AMQP pools channels over one connection.** An MQTT connection *is*
+  the session, so one per virtual user; an AMQP connection is a transport that multiplexes, and
+  a channel is the per-user thing.
+- The same request/response shape is there too — `PublishAndReceive`, with the caller saying
+  which delivered message is the answer, because only the protocol above knows.
+
+Both shapes, for both brokers, are in [`examples/MessageBrokers`](examples/MessageBrokers):
+
+```bash
+dotnet run --project examples/MessageBrokers -- mqtt localhost
+dotnet run --project examples/MessageBrokers -- amqp amqp://guest:guest@localhost:5672/
+```
+
 ## Getting the numbers somewhere else
 
 There are no reporting sinks and there will not be. Two routes instead:
@@ -521,6 +572,35 @@ For anything else there is one callback, not a plugin contract:
 ```csharp
 .WithIntervalObserver(record => Ship(record))   // never awaited; a failure is logged, not fatal
 ```
+
+## Testing a test
+
+The engine schedules on a `TimeProvider`, so a test that exercises Autobahn itself does not
+have to wait out the plan it is exercising:
+
+```csharp
+var clock = new FakeTimeProvider();
+
+var run = Task.Run(() => AutobahnRunner.RegisterScenarios(scenario)
+    .WithTimeProvider(clock)
+    .RunWithResult());
+
+while (!run.IsCompleted) { clock.Advance(TimeSpan.FromMilliseconds(100)); await Task.Delay(1); }
+```
+
+Everything the engine *waits* on comes off that clock — the reporting tick, the warm-up
+cut-off, the gap between simulation intervals, the actor start jitter, the step and iteration
+timeouts, the shutdown poll and the runtime-metrics sampler. A thirty-second plan finishes in
+a fraction of a second, having really run all of its iterations.
+
+What does not come off it is measurement: latency is read from a `Stopwatch` nothing can
+move. So a faked clock changes *when* a run does things and never *what* it reports having
+observed — a scenario that genuinely takes 25 ms still shows up as 25 ms. That is also why
+the seam costs the run nothing: `Stopwatch.GetTimestamp` stays a static intrinsic on the path
+that runs once per measurement.
+
+This is for testing the harness, not for pretending a target is fast. Scenario code runs on
+whatever clock it chose, and a real HTTP call takes as long as it takes.
 
 ## Configuration
 
@@ -744,6 +824,8 @@ src/Autobahn.Cli/          the `autobahn` dotnet tool
 src/Autobahn.Http/         the HTTP helper and HAR conversion
 src/Autobahn.WebSockets/   the WebSocket helper
 src/Autobahn.Grpc/         the gRPC helper
+src/Autobahn.Mqtt/         the MQTT helper
+src/Autobahn.Amqp/         the AMQP helper
 src/Autobahn.OpenTelemetry/ OTLP export
 src/Autobahn.Ui/           the Tesserae web UI (own solution; needs Transpose)
 src/Autobahn.Ui.Contracts/ wire DTOs shared by the host and the UI

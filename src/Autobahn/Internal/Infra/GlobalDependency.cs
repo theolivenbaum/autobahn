@@ -18,6 +18,9 @@ internal interface IGlobalDependency
 
     /// <summary>This run's metrics: the registry user code writes to, and the runtime collector.</summary>
     MetricsManager Metrics { get; }
+
+    /// <summary>The clock everything in the session schedules on. Never the one it measures with.</summary>
+    TimeProvider Time { get; }
 }
 
 internal sealed class GlobalDependency : IGlobalDependency, IDisposable
@@ -34,6 +37,7 @@ internal sealed class GlobalDependency : IGlobalDependency, IDisposable
         Config = context.Config;
         InfraConfig = context.InfraConfig;
         WorkerPlugins = context.WorkerPlugins;
+        Time = context.TimeProvider;
 
         _consoleLoggerFactory = LoggerBuilder.CreateConsoleLoggerFactory();
         _loggerFactory = LoggerBuilder.CreateLoggerFactory(logSettings, context);
@@ -41,7 +45,7 @@ internal sealed class GlobalDependency : IGlobalDependency, IDisposable
         ConsoleLogger = _consoleLoggerFactory.CreateLogger("Autobahn");
         Logger = _loggerFactory.CreateLogger("Autobahn");
 
-        Metrics = new MetricsManager(Logger, context.EnableRuntimeMetrics);
+        Metrics = new MetricsManager(Logger, context.EnableRuntimeMetrics, Time);
     }
 
     public ApplicationType ApplicationType { get; }
@@ -51,6 +55,7 @@ internal sealed class GlobalDependency : IGlobalDependency, IDisposable
     public ILogger ConsoleLogger { get; }
     public IReadOnlyList<IWorkerPlugin> WorkerPlugins { get; }
     public MetricsManager Metrics { get; }
+    public TimeProvider Time { get; }
 
     public void Dispose()
     {

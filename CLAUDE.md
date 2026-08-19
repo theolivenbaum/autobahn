@@ -60,9 +60,9 @@ dotnet test
 ```
 
 Keep it that way. `Autobahn.slnx` is the only solution at the root and holds the engine, the
-four protocol/export packages (`Autobahn.Http`, `Autobahn.WebSockets`, `Autobahn.Grpc`,
-`Autobahn.OpenTelemetry`), the CLI and the test project — all of which build from a clean
-clone. Adding a project that cannot build from a clean clone breaks the plain command for
+six protocol/export packages (`Autobahn.Http`, `Autobahn.WebSockets`, `Autobahn.Grpc`,
+`Autobahn.Mqtt`, `Autobahn.Amqp`, `Autobahn.OpenTelemetry`), the CLI and the test project —
+all of which build from a clean clone. Adding a project that cannot build from a clean clone breaks the plain command for
 everyone.
 
 The tests run on **TUnit**, on Microsoft.Testing.Platform. `global.json` opts `dotnet test`
@@ -222,6 +222,19 @@ cannot decide when a process exits, and throwing would take the reports with it.
 that lets a threshold fail must opt out with `WithoutThresholdExitCode()` or reset
 `Environment.ExitCode`** — it is process-wide, and a leaked failure fails the whole test run.
 
+### The clock
+
+`AutobahnContext.TimeProvider` is the clock the engine schedules on, `TimeProvider.System`
+unless `WithTimeProvider` replaced it. It reaches the engine as `IGlobalDependency.Time` and
+`ScenarioContextArgs.Time`, and it drives the reporting tick, the warm-up cut-off, the gap
+between simulation intervals, the actor start jitter, the step and iteration timeouts, the
+shutdown poll and the runtime-metrics sampler.
+
+What it does not drive is measurement - see "Two clocks" below - so a run on a fake clock
+finishes in a fraction of its planned wall clock while still reporting the latencies its
+scenario actually took. `TimeProviderTests` runs a thirty-second plan, all 300 iterations of
+it, in under four seconds.
+
 ### The load generator's own scheduling
 
 Autobahn sets server GC and concurrent GC in the shipped projects, and
@@ -261,6 +274,15 @@ is the file/user logger.
   zeroes the jitter for those segments; changing that silently makes `copies:` a lie.
 - **Timing is measured in ticks and time buckets**, not `DateTime`. Don't reintroduce
   wall-clock arithmetic on the hot path.
+- **Two clocks, and the split is deliberate.** Everything the engine *waits* on goes through
+  `dep.Time` / `ScenarioContextArgs.Time` - a `TimeProvider` the caller can replace with
+  `WithTimeProvider`. Everything it *measures* with is `Stopwatch`. `Stopwatch.GetTimestamp`
+  is a static intrinsic and `TimeProvider.GetTimestamp` is a virtual call, so moving the
+  measurement path onto the provider would cost one virtual call per measurement to make a
+  number nothing ever fakes fakeable. Keeping them apart is also what makes a faked run
+  honest: a fake clock changes when a run does things, never what it reports having observed.
+  A new `Task.Delay` or `new Timer` in the engine belongs on the provider; a new latency
+  reading belongs on the `Stopwatch`.
 - **`MetricUnit` carries its own decimal precision, and the default is not zero.**
   `MetricUnit.None` keeps two decimals because a bare number could be anything;
   `Count` and `Bytes` keep none. A unit with the wrong precision silently rounds a
@@ -300,11 +322,12 @@ is the file/user logger.
 
 ## The protocol helpers
 
-Four packages beside the engine, each with its own `.csproj` in the root solution so a plain
+Six packages beside the engine, each with its own `.csproj` in the root solution so a plain
 `dotnet build` covers them: `Autobahn.Http` (with HAR conversion), `Autobahn.WebSockets`,
-`Autobahn.Grpc` and `Autobahn.OpenTelemetry`. They depend on the engine and never the other
-way round; the engine must stay usable with none of them installed. The CLI references
-`Autobahn.Http` because `autobahn record` generates HTTP scenario source.
+`Autobahn.Grpc`, `Autobahn.Mqtt`, `Autobahn.Amqp` and `Autobahn.OpenTelemetry`. They depend
+on the engine and never the other way round; the engine must stay usable with none of them
+installed. The CLI references `Autobahn.Http` because `autobahn record` generates HTTP
+scenario source.
 
 - **The HTTP factories live on `HttpRequest`, not on a class called `Http`.** A class with the
   same name as its own namespace binds to the *namespace* inside anything under a shared root,
@@ -323,7 +346,46 @@ way round; the engine must stay usable with none of them installed. The CLI refe
   per-interval snapshot, and re-deriving deltas so a counter could be incremented would be
   arithmetic in service of the wrong shape. Every tag is the *identity* of the thing measured;
   a tag whose value changes each interval would make every interval its own time series.
-- `tests/Autobahn.Tests/TestServer.cs` is a real `HttpListener` on a real port, because these
+### The message brokers
+
+`Autobahn.Mqtt` and `Autobahn.Amqp` offer the same two shapes the WebSocket helper does,
+because those are properties of messaging rather than of a transport: request/response with
+the caller supplying the correlation, and publish-then-consume where a publisher scenario and
+a consumer scenario are independent and the number being measured is the delivery latency
+*between* them.
+
+- **`PublishStamped` / `ReceiveStamped` are the pair that measures delivery.** The publisher
+  writes `Stopwatch.GetTimestamp()` into the message and the consumer reads it back, because
+  two independent scenarios have nowhere else to put it. Monotonic and process-local on
+  purpose: both scenarios are in one load generator, and a wall clock can step backwards
+  mid-run and report a negative latency. A message with no stamp is a **failure**, not a zero -
+  reporting a foreign publisher's message as instant delivery would be the most flattering
+  possible lie.
+- **MQTT stamps the payload; AMQP stamps a header.** MQTT 3.1.1 has no user properties, and a
+  helper that only worked against MQTT 5 brokers would work against half of them. AMQP has
+  headers, so the body stays exactly what the test wrote.
+- **A plain `Receive` reports how long the iteration waited**, which is a property of the test
+  rather than of the broker: a consumer with nothing to consume waits as long as the publisher
+  takes. That is why the stamped pair exists and why it is a separate method.
+- **The inbox is bounded and drops the oldest**, with a `Dropped` count. An unbounded inbox in
+  a load test is a memory leak waiting for a slow consumer; dropping is a finding, and every
+  latency reported after a drop is optimistic.
+- **MQTT pools connections, AMQP pools channels over one connection.** Not an inconsistency:
+  an MQTT connection *is* the session, so N users on one is a different test, while an AMQP
+  connection is a transport that multiplexes sessions and a channel is the per-user thing. The
+  AMQP pool owns the shared connection (`AmqpPool`), because the first copy to finish must not
+  close the transport the rest are still using.
+- **Setup calls come in two forms.** `SubscribeAsync`/`DeclareQueueAsync`/`ConsumeAsync` take a
+  `CancellationToken` and throw; the `Subscribe`/`DeclareQueue`/`Consume` overloads take an
+  `IScenarioContext` and return a `Response`. `WithInit` has no scenario context, and a
+  subscription that could not be made is a test that cannot run rather than a slow iteration.
+- **MQTT is tested against a broker in this process** (`MQTTnet.Server`, a test-only package -
+  a client package must never ship a broker). **AMQP has no such thing**, so its integration
+  tests skip when nothing is listening and say how to get one: `AUTOBAHN_AMQP_URI`, or
+  `docker run --rm -p 5672:5672 rabbitmq:4-alpine`. Everything testable without a broker - the
+  stamp, the guards, the connect-failure path - runs everywhere.
+
+`tests/Autobahn.Tests/TestServer.cs` is a real `HttpListener` on a real port, because these
   tests are about the wire. A test that creates an `AutobahnMeter` must filter its
   `MeterListener` by the meter's **version** — every instance shares the name, so a
   name-only filter also picks up whatever a sibling test is publishing.
@@ -425,6 +487,16 @@ comes out of a `RunFeed` the run writes to once per reporting interval; a slow c
 frames from a bounded queue rather than applying back-pressure. The engine seams the host
 uses are `WithSessionStartObserver` (once, with the resolved run) and `WithIntervalObserver`
 (the record the reporting manager already built) - not hooks the engine grew for a UI.
+
+**The UI is the live view and only the live view.** It renders a running test. A finished run
+is rendered by the report writers under `Internal/Services/Reports/` - the handwritten HTML
+report for a person, the json run artifact for a machine - and those stay handwritten. There
+was a static export that rendered this application against a finished run's artifact; it was
+removed. Don't build it again: a record of a finished run is a document, and shipping twelve
+megabytes of application to render a hundred and fifty kilobytes of table is the wrong shape.
+The one thing the dashboard does read from finished runs is their artifacts, for the
+run-to-run comparison screen - which is a live-run feature, because the run it compares
+against is the one being watched.
 
 ### Building it
 

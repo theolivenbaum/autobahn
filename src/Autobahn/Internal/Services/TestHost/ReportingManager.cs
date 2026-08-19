@@ -33,7 +33,7 @@ internal sealed class ReportingManager : IReportingManager
     private readonly SessionArgs _sessionArgs;
     private readonly TimeSpan _reportingInterval;
     private readonly TimeSpan _timerMaxDuration;
-    private readonly System.Timers.Timer _buildRealtimeStatsTimer;
+    private readonly ITimer _buildRealtimeStatsTimer;
 
     // What the metrics did in each closed interval, keyed the same way the scheduler stats
     // are so the two line up in the timeline.
@@ -69,17 +69,18 @@ internal sealed class ReportingManager : IReportingManager
             ? TimeSpan.MaxValue
             : schedulers.Max(x => x.Scenario.PlanedDuration);
 
-        _buildRealtimeStatsTimer = new System.Timers.Timer(_reportingInterval.TotalMilliseconds);
-        _buildRealtimeStatsTimer.Elapsed += OnElapsed;
+        // Created stopped: Start() is what puts it in step with the run.
+        _buildRealtimeStatsTimer = dep.Time.CreateTimer(
+            OnElapsed, null, Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
-    private void OnElapsed(object? sender, System.Timers.ElapsedEventArgs e)
+    private void OnElapsed(object? state)
     {
         var duration = _curDuration + _reportingInterval;
 
         if (duration > _timerMaxDuration)
         {
-            _buildRealtimeStatsTimer.Stop();
+            StopTicking();
             return;
         }
 
@@ -177,9 +178,12 @@ internal sealed class ReportingManager : IReportingManager
     /// </remarks>
     public Task Start()
     {
-        _buildRealtimeStatsTimer.Start();
+        _buildRealtimeStatsTimer.Change(_reportingInterval, _reportingInterval);
         return Task.CompletedTask;
     }
+
+    private void StopTicking() =>
+        _buildRealtimeStatsTimer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
 
     /// <summary>
     /// Stops ticking, then waits just long enough for measurements already in flight to reach
@@ -193,8 +197,8 @@ internal sealed class ReportingManager : IReportingManager
     /// </remarks>
     public async Task Stop()
     {
-        _buildRealtimeStatsTimer.Stop();
-        await Task.Delay(Constants.ReportingManagerDrainDelay).ConfigureAwait(false);
+        StopTicking();
+        await Task.Delay(Constants.ReportingManagerDrainDelay, _dep.Time).ConfigureAwait(false);
     }
 
     public async Task<SessionResult> GetSessionResult(HostInfo hostInfo)
@@ -238,9 +242,5 @@ internal sealed class ReportingManager : IReportingManager
         ];
     }
 
-    public void Dispose()
-    {
-        _buildRealtimeStatsTimer.Elapsed -= OnElapsed;
-        _buildRealtimeStatsTimer.Dispose();
-    }
+    public void Dispose() => _buildRealtimeStatsTimer.Dispose();
 }

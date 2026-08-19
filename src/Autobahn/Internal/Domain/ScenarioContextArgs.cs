@@ -21,6 +21,9 @@ internal sealed class ScenarioContextArgs
     public required Func<HostInfo> GetHostInfo { get; init; }
     public required IMetricRegistry Metrics { get; init; }
 
+    /// <summary>The clock the scheduler and its actors wait on. Not the one they measure with.</summary>
+    public required TimeProvider Time { get; init; }
+
     /// <summary>
     /// The remaining allowance of the counted simulation currently running, or null while a
     /// timed one is. Set by the scheduler as it moves between segments; read by every actor.

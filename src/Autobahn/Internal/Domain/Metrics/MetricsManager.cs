@@ -18,11 +18,11 @@ internal sealed class MetricsManager : IDisposable
 {
     private readonly RuntimeMetrics? _runtime;
 
-    public MetricsManager(ILogger logger, bool collectRuntimeMetrics)
+    public MetricsManager(ILogger logger, bool collectRuntimeMetrics, TimeProvider time)
     {
         Registry = new MetricRegistry();
 
-        if (collectRuntimeMetrics) _runtime = new RuntimeMetrics(Registry, logger);
+        if (collectRuntimeMetrics) _runtime = new RuntimeMetrics(Registry, logger, time);
     }
 
     public MetricRegistry Registry { get; }

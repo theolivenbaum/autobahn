@@ -31,7 +31,7 @@ internal sealed class ScenarioScheduler : IDisposable
     private readonly OneTimeActorScheduler _oneTimeScheduler;
 
     private RuntimeScenario _scenario;
-    private Timer? _warmUpTimer;
+    private ITimer? _warmUpTimer;
     private SimulationPlanItem _currentSimulation;
     private long _pauseDurationTicks;
     private long _pauseSinceLastIntervalTicks;
@@ -61,7 +61,7 @@ internal sealed class ScenarioScheduler : IDisposable
     public Task Start(CancellationToken testHostCancelToken)
     {
         if (_scnCtx.ScenarioOperation == ScenarioOperation.WarmUp && _scenario.WarmUpDuration is { } warmUp)
-            _warmUpTimer = new Timer(_ => _ = StopAsync(), null, warmUp, Timeout.InfiniteTimeSpan);
+            _warmUpTimer = _scnCtx.Time.CreateTimer(_ => _ = StopAsync(), null, warmUp, Timeout.InfiniteTimeSpan);
 
         return RunPlan(testHostCancelToken);
     }
@@ -157,7 +157,7 @@ internal sealed class ScenarioScheduler : IDisposable
         _constantScheduler.AskToStop();
         _oneTimeScheduler.AskToStop();
         _scnTimer.Stop();
-        _warmUpTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+        _warmUpTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
     }
 
     private async Task RunPlan(CancellationToken testHostCancelToken)
@@ -249,7 +249,10 @@ internal sealed class ScenarioScheduler : IDisposable
                 // Scheduling took time; shorten the wait by the drift so the plan keeps its shape.
                 var interval = simulationInterval - intervalDrift;
 
-                await Task.Delay(interval > TimeSpan.Zero ? interval : simulationInterval, _scnCancelToken)
+                await Task.Delay(
+                        interval > TimeSpan.Zero ? interval : simulationInterval,
+                        _scnCtx.Time,
+                        _scnCancelToken)
                     .ConfigureAwait(false);
 
                 intervalDrift = CalcTimeDrift(startInterval, _scnTimer.Elapsed, simulationInterval);
@@ -297,14 +300,16 @@ internal sealed class ScenarioScheduler : IDisposable
     /// </summary>
     private async Task<int> WaitOnWorkingActors(TimeSpan timeout)
     {
-        var deadline = Stopwatch.GetTimestamp() + (long)(timeout.TotalSeconds * Stopwatch.Frequency);
+        // The session clock rather than a Stopwatch: this waits rather than measures, and a
+        // test driving a run on a fake clock has to be able to move the deadline too.
+        var startedAt = _scnCtx.Time.GetTimestamp();
 
-        while (Stopwatch.GetTimestamp() < deadline)
+        while (_scnCtx.Time.GetElapsedTime(startedAt) < timeout)
         {
             var working = GetWorkingActorCount();
             if (working == 0) return 0;
 
-            await Task.Delay(Constants.ShutdownPollInterval).ConfigureAwait(false);
+            await Task.Delay(Constants.ShutdownPollInterval, _scnCtx.Time).ConfigureAwait(false);
         }
 
         return GetWorkingActorCount();

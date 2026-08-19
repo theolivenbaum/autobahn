@@ -57,7 +57,7 @@ internal static class ScenarioExecution
     {
         var runTask = run(ctx);
 
-        var finished = await Task.WhenAny(runTask, Task.Delay(timeout, CancellationToken.None)).ConfigureAwait(false);
+        var finished = await Task.WhenAny(runTask, Task.Delay(timeout, ctx.Time, CancellationToken.None)).ConfigureAwait(false);
 
         if (ReferenceEquals(finished, runTask)) return await runTask.ConfigureAwait(false);
 

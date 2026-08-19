@@ -52,6 +52,15 @@ internal static class Constants
 
     public const int ConsoleRefreshTableCounter = 13;
 
+    /// <summary>How often the live console table redraws.</summary>
+    public static readonly TimeSpan ConsoleRefreshInterval = TimeSpan.FromSeconds(1);
+
+    /// <summary>
+    /// How long the host pauses between the warm-up and the bombing phase, after collecting,
+    /// so the run does not start measuring in the middle of the collection it just asked for.
+    /// </summary>
+    public static readonly TimeSpan WarmUpSettleDelay = TimeSpan.FromSeconds(1);
+
     /// <summary>The width the console report is laid out at when there is no terminal to measure.</summary>
     public const int NonInteractiveConsoleWidth = 140;
     /// <summary>How long in-flight iterations get to finish after a scenario's plan ends.</summary>

@@ -17,7 +17,7 @@ internal static class StepExecution
         try
         {
             response = timeout is { } stepTimeout
-                ? await RunWithTimeout(run, stepTimeout).ConfigureAwait(false)
+                ? await RunWithTimeout(run, stepTimeout, ctx.Time).ConfigureAwait(false)
                 : await run().ConfigureAwait(false);
         }
         catch (OperationCanceledException)
@@ -42,11 +42,12 @@ internal static class StepExecution
     /// Runs the step, giving up on it once it outruns its timeout. Same reasoning as the
     /// iteration timeout: cancelling asks, not waiting enforces.
     /// </summary>
-    private static async Task<Response<T>> RunWithTimeout<T>(Func<Task<Response<T>>> run, TimeSpan timeout)
+    private static async Task<Response<T>> RunWithTimeout<T>(
+        Func<Task<Response<T>>> run, TimeSpan timeout, TimeProvider time)
     {
         var runTask = run();
 
-        var finished = await Task.WhenAny(runTask, Task.Delay(timeout, CancellationToken.None)).ConfigureAwait(false);
+        var finished = await Task.WhenAny(runTask, Task.Delay(timeout, time, CancellationToken.None)).ConfigureAwait(false);
 
         if (ReferenceEquals(finished, runTask)) return await runTask.ConfigureAwait(false);
 

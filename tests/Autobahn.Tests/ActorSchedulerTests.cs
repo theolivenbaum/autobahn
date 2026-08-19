@@ -37,7 +37,8 @@ internal static class SchedulerTestContext
             ExecStopCommand = _ => { },
             TestInfo = TestInfo.Empty,
             GetHostInfo = () => HostInfo.Empty,
-            Metrics = new MetricRegistry()
+            Metrics = new MetricRegistry(),
+            Time = TimeProvider.System
         };
     }
 }

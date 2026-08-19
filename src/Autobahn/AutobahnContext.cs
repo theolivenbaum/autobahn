@@ -102,6 +102,24 @@ public sealed record AutobahnContext
     /// </remarks>
     public Func<Stats.SessionStartInfo, Task>? OnSessionStart { get; init; }
 
+    /// <summary>
+    /// The clock the engine schedules on. <see cref="TimeProvider.System"/> unless a test
+    /// replaced it.
+    /// </summary>
+    /// <remarks>
+    /// This is the engine's *scheduling* clock - the reporting tick, the warm-up cut-off, the
+    /// simulation interval, the shutdown poll, the runtime-metrics sampler - and deliberately
+    /// not its measuring clock. Latency is still read from <see cref="System.Diagnostics.Stopwatch"/>,
+    /// which is a static intrinsic; <c>TimeProvider.GetTimestamp</c> is a virtual call, and
+    /// paying one per measurement to make a number that is never faked fakeable is the kind
+    /// of self-inflicted cost the benchmarks exist to catch.
+    ///
+    /// What it does buy is a test that can drive a whole session without waiting for it: hand
+    /// the runner a <c>FakeTimeProvider</c> and the intervals, the warm-up and the shutdown
+    /// poll all advance when the test says so.
+    /// </remarks>
+    public required TimeProvider TimeProvider { get; init; }
+
     public static AutobahnContext Empty { get; } = new()
     {
         TestSuite = Constants.DefaultTestSuite,
@@ -129,6 +147,7 @@ public sealed record AutobahnContext
         EnableThresholdExitCode = true,
         ShowEffectiveConfig = false,
         OnInterval = null,
-        OnSessionStart = null
+        OnSessionStart = null,
+        TimeProvider = TimeProvider.System
     };
 }

@@ -186,6 +186,24 @@ public static class AutobahnRunner
         context with { OnSessionStart = observer };
 
     /// <summary>
+    /// Replaces the clock the engine schedules on, so a test can run a whole session without
+    /// waiting for it.
+    /// </summary>
+    /// <remarks>
+    /// Everything the engine *waits* on goes through this: the reporting tick, the warm-up
+    /// cut-off, the gap between simulation intervals, the shutdown poll and the runtime-metrics
+    /// sampler. What does not is the measuring: latency still comes from
+    /// <see cref="System.Diagnostics.Stopwatch"/>, so a faked clock changes when a run does
+    /// things, never what it reports having measured.
+    ///
+    /// This makes a fake clock useful for the engine's own timing, not for the scenario under
+    /// test - user code runs on whatever clock it chose, and a real HTTP call takes as long as
+    /// it takes.
+    /// </remarks>
+    public static AutobahnContext WithTimeProvider(this AutobahnContext context, TimeProvider timeProvider) =>
+        context with { TimeProvider = timeProvider };
+
+    /// <summary>
     /// Prints every effective setting and the layer its value came from before the run starts,
     /// so "why is the report folder that" is answerable without reading three files. The same
     /// thing happens when the command line carries <c>--show-config</c>.

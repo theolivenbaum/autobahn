@@ -76,7 +76,7 @@ internal sealed class ScenarioActor : IDisposable
             var timeBucket = _scenarioCtx.CurrentTimeBucket;
 
             if (startDelayMs > 0)
-                await Task.Delay(startDelayMs).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromMilliseconds(startDelayMs), _scnCtx.Time).ConfigureAwait(false);
 
             while (infiniteRun && !_shouldStop && !_cancelToken.IsCancellationRequested)
             {

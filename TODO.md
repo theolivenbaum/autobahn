@@ -139,14 +139,41 @@ The whole engine is C#. What is left of this section is the benchmark work, call
 
 - [x] **Retarget everything to .NET 10** — engine, tests, examples, benchmarks — and drop
   `netstandard2.0`. Single target framework.
-- [ ] **Use what that unlocks**, deliberately and where it pays. Done so far:
+- [x] **Use what that unlocks**, deliberately and where it pays. Taken:
   `System.Threading.Channels` for the stats mailbox, `System.Text.Json` for config and the
-  report view model, collection expressions and records throughout. Still owed: spans and
-  `Memory<T>` on the measurement path where a benchmark justifies it, `ValueTask` on hot
-  paths that usually complete synchronously, `TimeProvider` so tests can control time
-  instead of sleeping (the suite currently spends minutes of wall clock on `Task.Delay`),
-  `System.Text.Json` source generation, and the current `System.Diagnostics.Metrics`
-  primitives as the substrate for section 1 rather than a hand-rolled equivalent.
+  report view model, collection expressions and records throughout, and now `TimeProvider`
+  for everything the engine *waits* on - the reporting tick, the warm-up cut-off, the gap
+  between simulation intervals, the actor start jitter, the step and iteration timeouts, the
+  shutdown poll and the runtime-metrics sampler. `AutobahnRunner.WithTimeProvider` is the
+  seam; `TimeProviderTests` runs a thirty-second plan to completion, 300 iterations and all,
+  in under four seconds of wall clock.
+
+  Measured and deliberately **not** taken, with the reason recorded so it is not re-litigated:
+
+  - **`Stopwatch` stays on the measurement path.** `Stopwatch.GetTimestamp` is a static
+    intrinsic and `TimeProvider.GetTimestamp` is a virtual call; paying one per measurement
+    to make a number that is never faked fakeable is exactly the self-inflicted cost the
+    benchmarks exist to catch. It also keeps a faked run honest - a fake clock changes when
+    a run does things, never what it reports having observed, which is what
+    `Latency_is_measured_on_a_clock_the_fake_one_cannot_move` pins down.
+  - **`ValueTask` on the hot paths.** The measurement path is already allocation-free
+    (`PublishMeasurement` 0 B, `AccumulateMeasurement` 0 B), and the one await that matters -
+    the user's scenario function - genuinely suspends, which is the case `ValueTask` does not
+    help. An `async Task` method that *does* complete synchronously already returns a cached
+    completed task.
+  - **Spans and `Memory<T>` on the measurement path.** There is no buffer on it to span over:
+    a measurement is a struct through a channel and two `long`s into an HdrHistogram.
+  - **`System.Text.Json` source generation.** The engine's JSON surface is open over
+    user-supplied types - `FeedSource.Json<T>` deserializes whatever `T` the test declared,
+    and `DataSetConverter` serializes plugin cells by their runtime type - and a source
+    generator can see neither. A partial context would mean two serialization paths and a
+    type that silently falls off the generated one; serialization happens twice per run and
+    is on no hot path.
+  - **`System.Diagnostics.Metrics` as the substrate for section 1.** It is the right shape
+    for *export*, and `Autobahn.OpenTelemetry`'s `AutobahnMeter` uses it as such. It is the
+    wrong shape for the registry: reading an interval snapshot back out of it means a
+    `MeterListener`, and the interval/global split that both the live table and the timeline
+    read would become a subscription to your own writes.
 - [x] **Set runtime configuration properly** in the shipped projects — server GC and
   concurrent GC, and `GCLatencyMode.SustainedLowLatency` for the duration of a run, so the
   generator does not report its own gen2 pause as the target's latency.
@@ -175,11 +202,11 @@ The whole engine is C#. What is left of this section is the benchmark work, call
   on upstream `NBomber.Http`, `NBomber.Data` and a sink package, none of which this fork
   has. `examples/HelloWorld` replaces them and builds against the local project. More are
   owed as the features they would demonstrate land — and once there is a set worth gating,
-  fold `examples/Examples.slnx` into CI so they cannot rot unnoticed. *Six now — HelloWorld,
-  LoadModel, Metrics, Thresholds, HttpApi and CliScenarios (with a `.csx`) — and CI builds
+  fold `examples/Examples.slnx` into CI so they cannot rot unnoticed. *Seven now — HelloWorld,
+  LoadModel, Metrics, Thresholds, HttpApi, MessageBrokers and CliScenarios (with a `.csx`) — and CI builds
   the solution on every push.*
 - [x] **Packaging.** `dotnet pack` producing a correct package, plus a small script for the
-  release steps. No build framework. *Seven packages pack from the root;
+  release steps. No build framework. *Eight packages pack from the root;
   `scripts/release.sh` verifies, packs and tags, and leaves pushing the tag - the only thing
   that publishes - to a person.*
 - [x] **CI, from scratch.** The inherited GitHub Actions workflows were deleted, not
@@ -326,13 +353,13 @@ are what make a load test usable as a CI gate.
 - [x] **Metrics and thresholds sections** in every report format. *(CSV gets a
   `_metrics.csv` and a `_thresholds.csv` beside the step rows, because neither is a
   property of a step.)*
-- [ ] **Replace the handwritten HTML report** with output generated by the same UI components
-  as the live web interface (see section 8), so there is one visual language and one
-  codebase for both. *No longer blocked, and deliberately not done: `autobahn export` renders
-  exactly that page from a run artifact, but it is twelve megabytes against the handwritten
-  report's hundred and fifty kilobytes. Replacing a report every run writes with something
-  eighty times the size is the wrong trade; this needs the export to shrink — chiefly the
-  icon font, which is most of it — before the handwritten template retires.*
+- **Replace the handwritten HTML report** with output generated by the same UI components as
+  the live web interface. ~~Planned~~ — **dropped, not deferred.** The web UI is the live view
+  of a running test and nothing else; a finished run is a document, and the handwritten
+  template is the right way to write one. Generating it from the UI components was tried and
+  removed: it meant shipping twelve megabytes of application to render a hundred and fifty
+  kilobytes of table. The handwritten HTML report is the supported end-of-run rendering, and
+  the json run artifact is the supported machine-readable one.
 - [x] **Stop wiping the report folder.** A run empties its output folder before it starts.
   With the default per-session folder that is a no-op, but a pinned `WithReportFolder`
   points Autobahn at a directory it then deletes recursively on every run — which is a
@@ -368,7 +395,8 @@ are what make a load test usable as a CI gate.
 ## 7. Ecosystem: protocol helpers and export
 
 These ship as separate packages in this repository so they version together with the engine:
-`Autobahn.Http`, `Autobahn.WebSockets`, `Autobahn.Grpc` and `Autobahn.OpenTelemetry`.
+`Autobahn.Http`, `Autobahn.WebSockets`, `Autobahn.Grpc`, `Autobahn.Mqtt`, `Autobahn.Amqp` and
+`Autobahn.OpenTelemetry`.
 
 **Protocol helpers**
 
@@ -383,12 +411,18 @@ These ship as separate packages in this repository so they version together with
 - [x] **gRPC**, unary and streaming. *Pooled channels plus measured unary, server-streaming
   and caller-driven calls. Deliberately thin: the generated client is the API, and Autobahn
   adds the measurement rather than a second surface.*
-- [ ] **Message brokers** — MQTT and AMQP — supporting both the pooled-client shape (each
+- [x] **Message brokers** — MQTT and AMQP — supporting both the pooled-client shape (each
   virtual user owns a connection) and the independent-actors shape (separate publisher and
-  consumer scenarios measuring end-to-end delivery latency). *Not started. The shape is
-  clear — it is the WebSocket helper's publish-then-consume pattern with a broker client
-  underneath — but neither can be tested without a broker to test against, and a helper
-  nothing has ever run is worse than none.*
+  consumer scenarios measuring end-to-end delivery latency). *`Autobahn.Mqtt` on MQTTnet and
+  `Autobahn.Amqp` on RabbitMQ.Client. The delivery measurement is a stamp the publisher writes
+  into the message and the consumer reads back — a payload prefix for MQTT, which has no user
+  properties before v5, and a header for AMQP, which does. A message with no stamp is a failure
+  rather than a zero.*
+
+  *On testing, which was the reason this sat undone: MQTTnet ships a broker, so the MQTT tests
+  run one in-process and there is nothing to set up. AMQP has no such thing, so those tests
+  skip when nothing is listening and name what to start; everything that does not need a
+  broker — the stamp, the guards, the connect-failure path — runs everywhere.*
 - [x] **Traffic-capture conversion.** Turn a recorded browser session (HAR) into a starting
   scenario, so a realistic test does not start from a blank file.
 - [x] **Learn a test from a browser session.** Drive a real browser through Playwright,
@@ -425,11 +459,17 @@ A live web interface for a running load test, written in C# with
 [Tesserae](https://github.com/curiosity-ai/tesserae) and compiled to JavaScript by
 Transpose, served by the Autobahn CLI over Kestrel.
 
-**Built.** `autobahn run --ui` serves it; `autobahn export <run.json>` renders the same
-application against a finished run as one self-contained file. Every milestone below is done.
-The rest of this section is kept as the specification it was written as, with the deviations
-recorded where they happened: what a section says is what was aimed at, and the notes say
-where the implementation went somewhere else and why.
+**Built.** `autobahn run --ui` serves it. Every milestone below is done except the static
+export, which was cut on purpose - see below. The rest of this section is kept as the
+specification it was written as, with the deviations recorded where they happened: what a
+section says is what was aimed at, and the notes say where the implementation went somewhere
+else and why.
+
+**Scope: the UI is the live view and only the live view.** It is for watching scenarios run
+and reading their results while the run is happening. A finished run is read from the reports
+the engine writes - the html one for a person, the json artifact for a machine - and those
+stay handwritten. Tesserae renders the window onto a running test; it does not render the
+record of a finished one.
 
 ### Why
 
@@ -603,19 +643,26 @@ Three new projects:
 - Fully responsive down to a phone — watching a long run from somewhere other than the desk
   that started it is a real use case.
 
-### Static export
+### Static export — cut
 
-`autobahn export <run-artifact>` renders the same application against a static run artifact
-embedded in a single self-contained HTML file: same components, same charts, no server. The
-artifact is replayed into the same snapshot the live host serves, so the end-of-run view and
-the live view cannot drift apart — they are one application reading one shape.
+The plan here was `autobahn ui export <run-artifact>`: the same application rendered against
+a run artifact as one self-contained HTML file, replacing the handwritten HTML report so the
+two could not drift apart.
 
-*Deviation:* it does **not** replace the handwritten HTML report, and the report is not
-retired. A self-contained page carries the whole application — about twelve megabytes, most
-of it the icon font as data URIs — against a hundred and fifty kilobytes for the handwritten
-one. That is a fine size for a file somebody exports to share a run and a bad one for a
-report every run writes by default, so the two coexist: `export` is a command, and the html
-report stays a report format. Retiring it needs the export to get much smaller first.
+**Cut, and the item is closed rather than deferred.** It was built and then removed once the
+scope above was settled: the UI is the live view, and a finished run is what the reports are
+for. Two reasons, and the second is the one that decides it:
+
+- A self-contained page carries the whole application — about twelve megabytes, most of it
+  the icon font as data URIs — against a hundred and fifty kilobytes for the handwritten
+  report. That is the wrong trade for something every run would write.
+- More to the point, it is the wrong tool for the job. A finished run is a document: a table
+  of numbers somebody reads, greps, or attaches to a ticket. A live run needs charts that
+  move, a socket and a stop button. Rendering the second thing to produce the first meant
+  shipping an application where a page would do.
+
+The handwritten HTML report stays handwritten, and section 5's item to replace it is closed
+for the same reason.
 
 ### Milestones
 
@@ -626,4 +673,5 @@ report stays a report format. Retiring it needs the export to get much smaller f
 4. [x] Metrics and thresholds screens.
 5. [x] Load plan and configuration screens.
 6. [x] Run history and run-to-run comparison.
-7. [x] Static export. *The handwritten HTML report is not retired — see above.*
+7. [x] Static export. **Cut** — see above. The handwritten HTML report is not replaced, and
+   is not going to be.
