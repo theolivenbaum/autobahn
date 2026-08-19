@@ -2,7 +2,9 @@ using Microsoft.Extensions.Logging;
 using Autobahn.Metrics;
 using Autobahn.Configuration;
 using Autobahn.Internal.Domain;
+using Autobahn.Internal.Domain.Thresholds;
 using Autobahn.Stats;
+using Autobahn.Thresholds;
 
 namespace Autobahn.Internal.Services;
 
@@ -98,6 +100,28 @@ internal static class ContextResolver
     public static bool GetEnableStopTestForcibly(AutobahnContext context) =>
         Global(context)?.EnableStopTestForcibly ?? context.EnableStopTestForcibly;
 
+    /// <summary>
+    /// The rules the run is gated on: what the code declared, plus what the JSON config added.
+    /// </summary>
+    /// <remarks>
+    /// Config thresholds add to the code's rather than replacing them, because the two answer
+    /// different questions - the code says what the test is always about, and the config says
+    /// what this environment additionally demands. A rule under a scenario's settings block
+    /// takes that scenario's name from the block it sits in, so it need not repeat it.
+    /// </remarks>
+    public static IReadOnlyList<Threshold> GetThresholds(AutobahnContext context)
+    {
+        var global = Global(context)?.Thresholds ?? [];
+
+        var perScenario = (Global(context)?.ScenariosSettings ?? [])
+            .Where(setting => setting.Thresholds is not null)
+            .SelectMany(setting => setting.Thresholds!.Select(x => x.ScenarioName is null
+                ? x with { ScenarioName = setting.ScenarioName }
+                : x));
+
+        return [.. context.Thresholds, .. global, .. perScenario];
+    }
+
     private static string? GetReportFolder(AutobahnContext context) =>
         Global(context)?.ReportFolder ?? context.Reporting.FolderName;
 
@@ -127,6 +151,13 @@ internal static class ContextResolver
         var scenariosSettings = GetScenariosSettings(context);
         if (scenariosSettings.IsError) return Result<SessionArgs>.Fail(scenariosSettings.Error);
 
+        // Validated against the whole registered set rather than the target subset: a rule
+        // about a scenario this run did not target is a narrowed run, not a typo.
+        var thresholds = ThresholdValidation.Check(
+            GetThresholds(context), context.RegisteredScenarios.Select(x => x.ScenarioName).ToArray());
+
+        if (thresholds.IsError) return Result<SessionArgs>.Fail(thresholds.Error);
+
         return Result<SessionArgs>.Ok(new SessionArgs
         {
             TestInfo = testInfo,
@@ -139,7 +170,9 @@ internal static class ContextResolver
             EnableHintsAnalyzer = GetEnableHintsAnalyzer(context),
             EnableStopTestForcibly = GetEnableStopTestForcibly(context),
             CancellationToken = context.CancellationToken,
-            EnableCancelKeyPress = context.EnableCancelKeyPress
+            EnableCancelKeyPress = context.EnableCancelKeyPress,
+            Thresholds = thresholds.Value,
+            EnableThresholdExitCode = context.EnableThresholdExitCode
         });
     }
 

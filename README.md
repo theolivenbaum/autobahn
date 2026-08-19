@@ -87,6 +87,7 @@ dotnet run --project examples/HelloWorld
 | **Load simulation** | The shape of the load over time: keep N copies constant, ramp them, inject at a fixed or random rate, or pause. Several compose into a plan. |
 | **Response** | What a scenario or step returns: ok/fail, an optional payload, a status code, a size in bytes. |
 | **Worker plugin** | Background work that runs alongside the test and contributes its own stats (e.g. ping). |
+| **Threshold** | A pass/fail rule over the stats or the metrics, checked while the run happens. Its verdict is the process exit code. |
 | **Metric** | A named numeric series over the run — counter, gauge or histogram — for anything latency and throughput do not describe. |
 | **Report** | The end-of-run artifact: txt, csv, md, html. |
 
@@ -220,6 +221,59 @@ A load test that cannot show it was not itself the bottleneck is not evidence �
 these are on by default. `WithoutRuntimeMetrics()` turns them off. A counter that a platform
 does not have is dropped for the rest of the run rather than failing it.
 
+## Thresholds
+
+A test that only reports numbers needs a human to read them. **Thresholds** are pass/fail
+rules, checked on every reporting interval and again at the end:
+
+```csharp
+using static Autobahn.Thresholds.ThresholdComparison;
+using static Autobahn.Thresholds.ThresholdSubject;
+
+AutobahnRunner
+    .RegisterScenarios(scenario)
+    .WithThresholds(
+        Threshold.ErrorRateBelow(0.02),
+        Threshold.LatencyBelow(Percent99, 250).ForStep("reserve"),
+        Threshold.RpsAbove(30).StartingAfter(TimeSpan.FromSeconds(12)),
+        Threshold.Status("500", StatusCodeCount, LessThan, 50),
+        Threshold.Metric("payments.attempted", MetricCurrent, GreaterThan, 100).OnlyAtTheEnd(),
+        Threshold.ErrorRate(LessThan, 0.5).AbortingAfter(3))
+    .Run(args);
+```
+
+A rule always states what it **requires**, and it can be scoped to a scenario, one of its
+steps, a status code, or a metric. A rule that names no scenario applies to every scenario
+in the run, tallied separately — one scenario's error rate says nothing about another's.
+
+| Modifier | What it does |
+|--|--|
+| `.ForScenario(name)` | Narrows the rule to one scenario. |
+| `.ForStep(name)` | Reads one step's numbers instead of the scenario's totals. |
+| `.StartingAfter(t)` | Starts checking this far into the run, so ramp-up noise does not trip a steady-state rule. |
+| `.OnlyAtTheEnd()` | One check, against the whole run. Cumulative claims need it. |
+| `.AbortingAfter(n)` | Ends the run after `n` consecutive violations. Without it the rule is advisory. |
+| `.Named(text)` | What the reports call it. |
+
+Advisory is the default: the rule is recorded, reported, and it fails the run at the end,
+but the load keeps going. `.AbortingAfter(n)` is the difference between a report saying a
+service was down and not hammering a service that is already down.
+
+**The verdict is the exit code.** A failed threshold sets the process exit code to `2`, so a
+CI job that runs the test binary fails on its own; the run result says so either way:
+
+```csharp
+if (!stats.AllThresholdsPassed) { /* stats.Thresholds has every rule and how it fared */ }
+```
+
+`WithoutThresholdExitCode()` opts out. A rule that cannot mean what it says — a scenario the
+run does not have, a subject that does not apply to its scope, a rate compared against 12 —
+fails the run before any load is generated, because a gate that silently never checks
+anything is worse than no gate.
+
+Thresholds are declarable in the JSON config too, so the same binary can be gated
+differently per environment (see below).
+
 ## Configuration
 
 Anything set in code can be overridden by a JSON config, so the same test binary can be
@@ -246,6 +300,32 @@ gated differently per environment:
     "ReportFolder": "./reports",
     "ReportFormats": [ "Html", "Csv" ],
     "ReportingInterval": "00:00:05"
+  }
+}
+```
+
+Thresholds live there too. A rule under a scenario's settings block takes that scenario's
+name from the block it sits in; rules from the config *add* to the ones declared in code
+rather than replacing them, because the code says what the test is always about and the
+config says what this environment additionally demands:
+
+```jsonc
+{
+  "GlobalSettings": {
+    "Thresholds": [
+      { "Scope": "Scenario", "Subject": "ErrorRate", "Comparison": "LessThan", "Value": 0.01,
+        "StartsAfter": "00:00:30", "Name": "stays reliable" },
+      { "Scope": "StatusCode", "StatusCode": "500", "Subject": "StatusCodeCount",
+        "Comparison": "LessThan", "Value": 10, "AbortAfter": 3 }
+    ],
+    "ScenariosSettings": [
+      {
+        "ScenarioName": "add_to_basket",
+        "Thresholds": [
+          { "Scope": "Scenario", "Subject": "Percent99", "Comparison": "LessThan", "Value": 500 }
+        ]
+      }
+    ]
   }
 }
 ```

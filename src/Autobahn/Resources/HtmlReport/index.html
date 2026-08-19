@@ -342,6 +342,42 @@
         </div>
     </script>
 
+    <script type="text/x-template" id="thresholds-table-template">
+        <div class="card custom">
+            <div :class="['card-header', 'white-text', allPassed ? 'bg-success' : 'bg-danger']">
+                <h6>thresholds: {{verdict}}</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-hover table-striped table-sm">
+                    <thead class="mdb-color lighten-1 white-text">
+                    <tr>
+                        <th>threshold</th>
+                        <th>scenario</th>
+                        <th>target</th>
+                        <th>observed</th>
+                        <th>checks failed</th>
+                        <th>first failed at</th>
+                        <th>verdict</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr v-for="(threshold, index) in thresholds" :key="`threshold-${index}`">
+                        <td><strong>{{threshold.Name}}</strong></td>
+                        <td>{{threshold.ScenarioName}}</td>
+                        <td>{{symbol(threshold.Comparison)}} {{threshold.Value}}</td>
+                        <td :class="threshold.Passed ? 'text-success' : 'text-danger'">{{threshold.ObservedValue}}</td>
+                        <td>{{threshold.FailedChecks}} of {{threshold.TotalChecks}}</td>
+                        <td>{{threshold.FirstFailedAt || ''}}</td>
+                        <td :class="threshold.Passed ? 'text-success' : 'text-danger'">
+                            {{threshold.Aborted ? 'failed - aborted the run' : (threshold.Passed ? 'passed' : 'failed')}}
+                        </td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </script>
+
     <script type="text/x-template" id="hints-table-template">
         <div class="card custom">
             <div class="card-header mdb-color darken-2 white-text">
@@ -434,6 +470,14 @@
                            @click="selectView('plugins')"
                            :class="{disabled: !viewModel.FinalStats.PluginStats || !viewModel.FinalStats.PluginStats.length}">
                             Plugins <span class="sub-icon sub-icon-plugin fas fa-puzzle-piece"></span>
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a data-toggle="pill" href="#thresholds-view" role="tab" aria-controls="thresholds-view"
+                           @click="selectView('thresholds')"
+                           :class="{disabled: !viewModel.FinalStats.Thresholds || !viewModel.FinalStats.Thresholds.length}">
+                            Thresholds <span class="sub-icon sub-icon-plugin fas fa-check-double"></span>
                         </a>
                     </li>
 
@@ -801,6 +845,16 @@
                         <div class="row">
                             <div class="col">
                                 <plugins-stats-table :plugins-stats="viewModel.FinalStats.PluginStats"></plugins-stats-table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Thresholds View -->
+                    <div class="tab-pane fade show" id="thresholds-view" role="tabpanel"
+                         v-if="viewModel.FinalStats.Thresholds && viewModel.FinalStats.Thresholds.length > 0">
+                        <div class="row">
+                            <div class="col">
+                                <thresholds-table :thresholds="viewModel.FinalStats.Thresholds"></thresholds-table>
                             </div>
                         </div>
                     </div>

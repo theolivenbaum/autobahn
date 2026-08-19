@@ -80,6 +80,13 @@ internal static class Constants
     public const string MetricSocketBytesSent = "runtime.socket_sent";
     public const string MetricSocketBytesReceived = "runtime.socket_received";
 
+    // Thresholds.
+
+    /// <summary>The process exit code a run sets when one of its thresholds failed.</summary>
+    public const int ThresholdFailedExitCode = 2;
+
+    public const string StopReasonThreshold = "a threshold was violated";
+
     // Why a run ended before its plan did.
 
     public const string StopReasonCancelled = "the caller cancelled the session";

@@ -107,6 +107,7 @@ src/Autobahn/
   Distribution.cs                           Uniform / Zipfian / Multinomial workload pickers
   Contracts/                                IScenarioContext, IResponse, LoadSimulation, ScenarioProps…
   Metrics/                                  IMetric/ICounter/IGauge/IHistogram, MetricKind, MetricUnit
+  Thresholds/                               Threshold, ThresholdScope/Subject/Comparison
   Stats/                                    the records the reports and the API read
   Configuration/                            JSON config model (autobahn-config.json)
   Plugins/                                  IWorkerPlugin, Network/Ping + PsPing
@@ -122,6 +123,7 @@ src/Autobahn/
       HintsAnalyzer.cs                      post-run advice
       Concurrency/                          ScenarioActor, ScenarioActorPool
       Metrics/                              the metric implementations, the registry, RuntimeMetrics
+      Thresholds/                           ThresholdChecker, ThresholdState, subject reader, validation
       Scheduler/                            ConstantActorScheduler, OneTimeActorScheduler, ScenarioScheduler
       Stats/                                RawMeasurementStats, Statistics, ScenarioStatsActor
     Infra/                                  ConsoleRender, LoggerBuilder, GlobalDependency, HostInfoProvider
@@ -193,6 +195,26 @@ if the platform does not have it. Socket bytes come from an `EventListener` on t
 
 The metrics are reset when bombing starts, so the series they report cover the same window
 every other number in the report does — warm-up is not part of it.
+
+### Thresholds
+
+`ThresholdChecker` holds one `ThresholdState` per rule *per scenario* — a rule that names no
+scenario is a rule about each of them, tallied separately, because one scenario's error rate
+says nothing about another's. `ReportingManager` checks them in the continuation of each
+interval tick (the stats have to exist first) and once more at the end with `isFinal: true`,
+against the whole run rather than the last interval. That final check is why a run shorter
+than one reporting interval is still gated.
+
+`ThresholdSubjectReader` is the only place that knows what each `ThresholdSubject` means. It
+returns **null** rather than zero when a subject does not apply or the thing it names was
+never produced, so a mismatched rule is a skipped check instead of one that silently passes
+against a number nobody measured. `ThresholdValidation` runs before any load and rejects a
+rule that cannot mean what it says.
+
+The verdict is a process exit code, set in `SessionRunner.ApplyThresholdVerdict`: a library
+cannot decide when a process exits, and throwing would take the reports with it. **Any test
+that lets a threshold fail must opt out with `WithoutThresholdExitCode()` or reset
+`Environment.ExitCode`** — it is process-wide, and a leaked failure fails the whole test run.
 
 ### Logging
 

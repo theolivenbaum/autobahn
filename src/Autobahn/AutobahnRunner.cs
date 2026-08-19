@@ -8,6 +8,7 @@ using Autobahn.Internal.Json;
 using Autobahn.Internal.Services;
 using Autobahn.Plugins;
 using Autobahn.Stats;
+using Autobahn.Thresholds;
 
 namespace Autobahn;
 
@@ -144,6 +145,22 @@ public static class AutobahnRunner
     /// </summary>
     public static AutobahnContext WithCancellationToken(this AutobahnContext context, CancellationToken cancellationToken) =>
         context with { CancellationToken = cancellationToken };
+
+    /// <summary>
+    /// Adds pass/fail rules to the run. They are checked on every reporting interval and again
+    /// at the end; a rule that fails fails the run, and one built with <c>AbortingAfter</c>
+    /// ends it early.
+    /// </summary>
+    public static AutobahnContext WithThresholds(this AutobahnContext context, params Threshold[] thresholds) =>
+        context with { Thresholds = [.. context.Thresholds, .. thresholds] };
+
+    /// <summary>
+    /// Leaves the process exit code alone when a threshold fails. By default a failed
+    /// threshold sets it to <see cref="Constants.ThresholdFailedExitCode"/>, which is what
+    /// makes the run usable as a CI gate; the run result says so either way.
+    /// </summary>
+    public static AutobahnContext WithoutThresholdExitCode(this AutobahnContext context) =>
+        context with { EnableThresholdExitCode = false };
 
     /// <summary>
     /// Stops collecting the load generator's own CPU, memory, GC, thread-pool and socket

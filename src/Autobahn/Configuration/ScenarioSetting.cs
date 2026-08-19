@@ -1,5 +1,6 @@
 using System.Text.Json.Serialization;
 using Autobahn.Internal.Json;
+using Autobahn.Thresholds;
 
 namespace Autobahn.Configuration;
 
@@ -18,4 +19,10 @@ public sealed record ScenarioSetting
     public string? CustomSettings { get; init; }
 
     public int? MaxFailCount { get; init; }
+
+    /// <summary>
+    /// Pass/fail rules about this scenario. A rule declared here does not need to name the
+    /// scenario again - the settings block it sits in already did.
+    /// </summary>
+    public IReadOnlyList<Threshold>? Thresholds { get; init; }
 }

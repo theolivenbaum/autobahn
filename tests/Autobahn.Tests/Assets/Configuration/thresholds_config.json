@@ -1,0 +1,41 @@
+{
+  "TestSuite": "gated",
+  "TestName": "declarative thresholds",
+
+  "GlobalSettings": {
+    "ScenariosSettings": [
+      {
+        "ScenarioName": "checkout",
+        "Thresholds": [
+          {
+            "Scope": "Scenario",
+            "Subject": "Percent99",
+            "Comparison": "LessThan",
+            "Value": 5000,
+            "Name": "checkout p99 under 5s"
+          }
+        ]
+      }
+    ],
+
+    "Thresholds": [
+      {
+        "Scope": "Scenario",
+        "Subject": "ErrorRate",
+        "Comparison": "LessThan",
+        "Value": 0.01,
+        "StartsAfter": "00:00:02",
+        "Name": "everything stays reliable"
+      },
+      {
+        "Scope": "StatusCode",
+        "StatusCode": "500",
+        "Subject": "StatusCodeCount",
+        "Comparison": "LessThan",
+        "Value": 10,
+        "ScenarioName": "checkout",
+        "Name": "few server errors"
+      }
+    ]
+  }
+}

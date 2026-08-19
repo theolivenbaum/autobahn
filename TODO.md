@@ -235,21 +235,21 @@ per step; it has no notion of a *metric* that is neither of those.
 4.1.2 can tell you what happened; it cannot tell you whether it was acceptable. Thresholds
 are what make a load test usable as a CI gate.
 
-- [ ] **Runtime thresholds evaluated during the run**, on every reporting interval, not only
+- [x] **Runtime thresholds evaluated during the run**, on every reporting interval, not only
   at the end. A threshold is a predicate over the current stats.
-- [ ] **Scope.** Scenario-level (overall error rate, percentiles, throughput), step-level
+- [x] **Scope.** Scenario-level (overall error rate, percentiles, throughput), step-level
   (the same, for one named step), status-code level (a given code's count or share), and
   metric-level (over the metrics from section 1).
-- [ ] **Abort policy.** A threshold can be advisory (recorded, reported, fails the run at the
+- [x] **Abort policy.** A threshold can be advisory (recorded, reported, fails the run at the
   end) or can abort the run once it has been violated N consecutive checks — the difference
   between "the report says it was bad" and "stop hammering a service that is already down".
-- [ ] **Delayed start.** A threshold can be told to start checking only after a given elapsed
+- [x] **Delayed start.** A threshold can be told to start checking only after a given elapsed
   time, so ramp-up noise does not trip a steady-state rule.
-- [ ] **Declarative thresholds in the JSON config**, so the same test binary can be gated
+- [x] **Declarative thresholds in the JSON config**, so the same test binary can be gated
   differently per environment without a recompile.
-- [ ] **Reporting.** A threshold section in the reports and on the console showing each rule,
+- [x] **Reporting.** A threshold section in the reports and on the console showing each rule,
   its target, its observed value, and when it first failed.
-- [ ] **Process exit code.** A failed threshold must produce a non-zero exit code and a
+- [x] **Process exit code.** A failed threshold must produce a non-zero exit code and a
   clearly failed run result, or the CI gate is decorative. Make the exit-code contract
   explicit and documented.
 

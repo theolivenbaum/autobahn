@@ -3,4 +3,5 @@
   <Project Path="HelloWorld/HelloWorld.csproj" />
   <Project Path="LoadModel/LoadModel.csproj" />
   <Project Path="Metrics/Metrics.csproj" />
+  <Project Path="Thresholds/Thresholds.csproj" />
 </Solution>

@@ -81,6 +81,11 @@ internal sealed class TestHost : IDisposable
         }
 
         using var reportingManager = new ReportingManager(_dep, bombingSchedulers, sessionArgs);
+
+        // A threshold with an abort policy is the difference between a report saying a service
+        // was down and not hammering a service that is already down.
+        reportingManager.OnThresholdAbort = reason => _ = StopTest(reason);
+
         await StartBombing(bombingSchedulers, reportingManager).ConfigureAwait(false);
 
         _dep.LogInfo("Calculating final statistics...");

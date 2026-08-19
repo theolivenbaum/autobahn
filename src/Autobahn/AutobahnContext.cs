@@ -2,6 +2,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Autobahn.Configuration;
 using Autobahn.Plugins;
+using Autobahn.Thresholds;
 
 namespace Autobahn;
 
@@ -53,6 +54,15 @@ public sealed record AutobahnContext
     /// </summary>
     public required bool EnableRuntimeMetrics { get; init; }
 
+    /// <summary>The pass/fail rules this run is gated on. Empty means the run cannot fail.</summary>
+    public required IReadOnlyList<Threshold> Thresholds { get; init; }
+
+    /// <summary>
+    /// Whether a failed threshold sets a non-zero process exit code. On by default, because a
+    /// CI gate that always exits zero is decorative.
+    /// </summary>
+    public required bool EnableThresholdExitCode { get; init; }
+
     public static AutobahnContext Empty { get; } = new()
     {
         TestSuite = Constants.DefaultTestSuite,
@@ -75,6 +85,8 @@ public sealed record AutobahnContext
         EnableStopTestForcibly = false,
         CancellationToken = default,
         EnableCancelKeyPress = true,
-        EnableRuntimeMetrics = true
+        EnableRuntimeMetrics = true,
+        Thresholds = [],
+        EnableThresholdExitCode = true
     };
 }

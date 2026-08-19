@@ -1,5 +1,6 @@
 using Autobahn.Configuration;
 using Autobahn.Stats;
+using Autobahn.Thresholds;
 
 namespace Autobahn.Internal.Services;
 
@@ -30,6 +31,12 @@ internal sealed record SessionArgs
     /// <summary>Whether Ctrl+C is turned into an early stop rather than killing the process.</summary>
     public required bool EnableCancelKeyPress { get; init; }
 
+    /// <summary>The pass/fail rules this run is gated on.</summary>
+    public required IReadOnlyList<Threshold> Thresholds { get; init; }
+
+    /// <summary>Whether a failed threshold sets a non-zero process exit code.</summary>
+    public required bool EnableThresholdExitCode { get; init; }
+
     public static SessionArgs Empty { get; } = new()
     {
         TestInfo = TestInfo.Empty,
@@ -42,6 +49,8 @@ internal sealed record SessionArgs
         EnableHintsAnalyzer = false,
         EnableStopTestForcibly = false,
         CancellationToken = default,
-        EnableCancelKeyPress = true
+        EnableCancelKeyPress = true,
+        Thresholds = [],
+        EnableThresholdExitCode = true
     };
 }
