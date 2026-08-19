@@ -1,6 +1,7 @@
 using System.Text;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Autobahn.Metrics;
 using Autobahn.Configuration;
 using Autobahn.Stats;
 
@@ -253,5 +254,6 @@ internal static class ScenarioFactory
         public HostInfo HostInfo => context.GetHostInfo();
         public IConfiguration CustomSettings => customSettings;
         public ILogger Logger => context.Logger;
+        public IMetricRegistry Metrics => context.Metrics;
     }
 }

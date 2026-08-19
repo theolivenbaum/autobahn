@@ -87,6 +87,7 @@ dotnet run --project examples/HelloWorld
 | **Load simulation** | The shape of the load over time: keep N copies constant, ramp them, inject at a fixed or random rate, or pause. Several compose into a plan. |
 | **Response** | What a scenario or step returns: ok/fail, an optional payload, a status code, a size in bytes. |
 | **Worker plugin** | Background work that runs alongside the test and contributes its own stats (e.g. ping). |
+| **Metric** | A named numeric series over the run — counter, gauge or histogram — for anything latency and throughput do not describe. |
 | **Report** | The end-of-run artifact: txt, csv, md, html. |
 
 ## Load simulations
@@ -176,6 +177,48 @@ keep what it measured; press it again to let the runtime kill the process.
 `WithoutCancelKeyPress()` opts out and leaves Ctrl+C to the runtime. From inside a
 scenario, `context.StopCurrentTest(reason)` and `context.StopScenario(name, reason)` are
 the same early stop.
+
+## Metrics
+
+Latency, throughput, status codes and data transfer describe the *target*. A **metric** is
+anything else worth a number: the queue you are draining, the cache you are missing, and
+the load generator's own health.
+
+Three kinds, registered by name off `context.Metrics` (asking twice hands back the same
+metric, so a scenario can take it in `Init` and use it on the hot path):
+
+```csharp
+context.Metrics.Counter("cache.miss").Increment();              // a running total
+context.Metrics.Gauge("queue.depth", MetricUnit.Count).Set(n);  // current value, last write wins
+context.Metrics.Histogram("payload", MetricUnit.Kilobytes).Record(bytes);   // a distribution
+```
+
+A write is a single interlocked operation and allocates nothing, so one per iteration costs
+about 24 ns — see `performance/Autobahn.Benchmarks/README.md`. `MetricUnit` says how a raw
+value is displayed: record bytes, report kilobytes; the scale is applied once, when the
+interval closes.
+
+Everything lands on `SessionStats.Metrics`, ordered by name so a diff between two runs is a
+diff of values rather than of row order, and on each `TimeLineHistoryRecord` for the run's
+interval-by-interval view:
+
+```csharp
+var ratio = stats.Metrics.Single(x => x.Name == "cache.hit").Current;
+```
+
+**The load generator measures itself too.** CPU, working set, GC heap and collections,
+thread-pool queue length and thread count, process threads, and socket bytes are collected
+on their own timer without anyone asking, and shown live beside the scenario table:
+
+```
+runtime.cpu  runtime.working_set  runtime.gc_heap  runtime.gc_gen0/1/2
+runtime.threadpool_queue  runtime.threadpool_threads  runtime.threads
+runtime.socket_sent  runtime.socket_received
+```
+
+A load test that cannot show it was not itself the bottleneck is not evidence — that is why
+these are on by default. `WithoutRuntimeMetrics()` turns them off. A counter that a platform
+does not have is dropped for the rest of the run rather than failing it.
 
 ## Configuration
 

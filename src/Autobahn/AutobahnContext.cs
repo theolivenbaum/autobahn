@@ -46,6 +46,13 @@ public sealed record AutobahnContext
     /// </summary>
     public required bool EnableCancelKeyPress { get; init; }
 
+    /// <summary>
+    /// Whether the load generator's own CPU, memory, GC, thread-pool and socket counters are
+    /// collected alongside the scenario stats. On by default: a load test that cannot show it
+    /// was not itself the bottleneck is not evidence.
+    /// </summary>
+    public required bool EnableRuntimeMetrics { get; init; }
+
     public static AutobahnContext Empty { get; } = new()
     {
         TestSuite = Constants.DefaultTestSuite,
@@ -67,6 +74,7 @@ public sealed record AutobahnContext
         MinimumLogLevel = null,
         EnableStopTestForcibly = false,
         CancellationToken = default,
-        EnableCancelKeyPress = true
+        EnableCancelKeyPress = true,
+        EnableRuntimeMetrics = true
     };
 }

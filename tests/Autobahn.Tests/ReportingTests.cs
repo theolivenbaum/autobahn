@@ -44,8 +44,10 @@ public class ReportingTests
 
         var files = Directory.GetFiles(folder, "*.*", SearchOption.TopDirectoryOnly).Select(x => new FileInfo(x)).ToArray();
 
-        // Four report formats plus the run's own log file.
-        await Assert.That(files.Length).IsEqualTo(5);
+        // Four report formats, the metrics CSV that rides alongside the step one, and the
+        // run's own log file.
+        await Assert.That(files.Length).IsEqualTo(6);
+        await Assert.That(files.Count(x => x.Name.EndsWith("_metrics.csv"))).IsEqualTo(1);
 
         foreach (var file in files)
         {
@@ -56,7 +58,7 @@ public class ReportingTests
             await Assert.That(file.Length).IsGreaterThan(0L);
         }
 
-        await Assert.That(stats.ReportFiles.Length).IsEqualTo(4);
+        await Assert.That(stats.ReportFiles.Length).IsEqualTo(5);
 
         // Every format renders; none of them falls back to the "could not generate" text.
         foreach (var report in stats.ReportFiles)
@@ -98,7 +100,10 @@ public class ReportingTests
             .WithReportFormats(ReportFormat.Csv)
             .Run();
 
-        var csvFile = Directory.GetFiles(folder).Select(x => new FileInfo(x)).First(x => x.Extension == ".csv");
+        // The metrics ride in their own CSV beside this one; this test is about the step rows.
+        var csvFile = Directory.GetFiles(folder)
+            .Select(x => new FileInfo(x))
+            .First(x => x.Extension == ".csv" && !x.Name.EndsWith("_metrics.csv"));
         var csvRows = await File.ReadAllLinesAsync(csvFile.FullName);
 
         // header + (scenario + 1 step) + (scenario + 2 steps)

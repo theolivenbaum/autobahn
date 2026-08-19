@@ -230,6 +230,26 @@ const initApp = (appContainer, viewModel) => {
         }
     });
 
+    // Kind is serialized as the enum's number, and which columns mean anything depends on it:
+    // a counter has no distribution, and a gauge has no percentiles of its own.
+    var METRIC_KINDS = ['counter', 'gauge', 'histogram'];
+
+    Vue.component('metrics-table', {
+        props: ['metrics'],
+        template: '#metrics-table-template',
+        methods: {
+            kindName: function (kind) {
+                return typeof kind === 'number' ? (METRIC_KINDS[kind] || kind) : String(kind).toLowerCase();
+            },
+            isCounter: function (metric) {
+                return this.kindName(metric.Kind) === 'counter';
+            },
+            hasPercentiles: function (metric) {
+                return this.kindName(metric.Kind) === 'histogram';
+            }
+        }
+    });
+
     Vue.component('hints-table', {
         props: ['hints'],
         template: '#hints-table-template'

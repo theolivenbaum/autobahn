@@ -48,6 +48,38 @@ internal static class Constants
     /// <summary>How often the shutdown path re-checks whether the actors have drained.</summary>
     public static readonly TimeSpan ShutdownPollInterval = TimeSpan.FromMilliseconds(25);
 
+    // Metrics.
+
+    /// <summary>How often the runtime metrics are sampled, independent of the reporting interval.</summary>
+    public static readonly TimeSpan MetricsSampleInterval = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>The ceiling of a metric histogram, in hundredths of the metric's raw unit.</summary>
+    public const long MaxTrackableMetricValue = 1_000_000_000_000L;
+
+    public const int MetricSignificantDigits = 3;
+
+    /// <summary>
+    /// How many runtime samples pass between reads of the process thread count. Enumerating
+    /// every thread in the process is the most expensive counter there is, and the number it
+    /// produces moves slowly.
+    /// </summary>
+    public const int ProcessThreadSampleEvery = 8;
+
+    /// <summary>How often the runtime is asked to publish its socket event counters, in seconds.</summary>
+    public const int SocketCounterIntervalSec = 1;
+
+    public const string MetricCpuPercent = "runtime.cpu";
+    public const string MetricWorkingSet = "runtime.working_set";
+    public const string MetricGcHeap = "runtime.gc_heap";
+    public const string MetricGen0Collections = "runtime.gc_gen0";
+    public const string MetricGen1Collections = "runtime.gc_gen1";
+    public const string MetricGen2Collections = "runtime.gc_gen2";
+    public const string MetricThreadPoolQueue = "runtime.threadpool_queue";
+    public const string MetricThreadPoolThreads = "runtime.threadpool_threads";
+    public const string MetricThreads = "runtime.threads";
+    public const string MetricSocketBytesSent = "runtime.socket_sent";
+    public const string MetricSocketBytesReceived = "runtime.socket_received";
+
     // Why a run ended before its plan did.
 
     public const string StopReasonCancelled = "the caller cancelled the session";

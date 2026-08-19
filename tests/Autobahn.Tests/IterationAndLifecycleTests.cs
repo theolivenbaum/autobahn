@@ -338,6 +338,9 @@ public class InstanceAwareDistributionTests
         public int InvocationNumber => 1;
         public Dictionary<string, object> Data { get; } = [];
         public CancellationToken CancellationToken => CancellationToken.None;
+        public Autobahn.Metrics.IMetricRegistry Metrics { get; } =
+            new Autobahn.Internal.Domain.Metrics.MetricRegistry();
+
         public void StopScenario(string scenarioName, string reason) { }
         public void StopCurrentTest(string reason) { }
     }

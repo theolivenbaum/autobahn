@@ -13,6 +13,12 @@ public sealed record SessionStats
     public required HostInfo HostInfo { get; init; }
     public required TestInfo TestInfo { get; init; }
     public required ReportFile[] ReportFiles { get; init; }
+
+    /// <summary>
+    /// Every metric collected over the run, ordered by name so a diff between two runs is a
+    /// diff of values rather than of row order.
+    /// </summary>
+    public MetricStats[] Metrics { get; init; } = [];
     public required int AllRequestCount { get; init; }
     public required int AllOkCount { get; init; }
     public required int AllFailCount { get; init; }

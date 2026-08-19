@@ -106,6 +106,7 @@ src/Autobahn/
   ScenarioContextExtensions.cs              OwnsIndex / Partition / ItemForIteration
   Distribution.cs                           Uniform / Zipfian / Multinomial workload pickers
   Contracts/                                IScenarioContext, IResponse, LoadSimulation, ScenarioProps…
+  Metrics/                                  IMetric/ICounter/IGauge/IHistogram, MetricKind, MetricUnit
   Stats/                                    the records the reports and the API read
   Configuration/                            JSON config model (autobahn-config.json)
   Plugins/                                  IWorkerPlugin, Network/Ping + PsPing
@@ -120,6 +121,7 @@ src/Autobahn/
       StepExecution.cs, ScenarioExecution.cs   the measured wrappers
       HintsAnalyzer.cs                      post-run advice
       Concurrency/                          ScenarioActor, ScenarioActorPool
+      Metrics/                              the metric implementations, the registry, RuntimeMetrics
       Scheduler/                            ConstantActorScheduler, OneTimeActorScheduler, ScenarioScheduler
       Stats/                                RawMeasurementStats, Statistics, ScenarioStatsActor
     Infra/                                  ConsoleRender, LoggerBuilder, GlobalDependency, HostInfoProvider
@@ -169,6 +171,29 @@ The **`ReportingManager`** ticks on a timer at the reporting interval and asks e
 scheduler to close its interval, which is what feeds the console table and the timeline
 behind the final report. At the end it builds `SessionStats`.
 
+### Metrics
+
+A second accumulator beside the stats pipeline, and deliberately not folded into it. The two
+answer different questions and have different write patterns: a measurement is published once
+per iteration through the stats actor's mailbox, while a metric is written whenever anything
+feels like it. Putting metrics through the same channel would make every metric write queue
+behind the measurements. They meet again only at the reporting interval.
+
+`MetricsManager` (on `IGlobalDependency`) owns a `MetricRegistry` and, unless the user turned
+it off, a `RuntimeMetrics` collector. A metric write is one interlocked operation on a field
+and allocates nothing; each metric keeps an *interval* accumulator and a *global* one, the
+same split the stats actor uses. `ReportingManager` closes the interval on its own tick, so
+nothing else may call `CloseInterval` — the live console table reads `Registry.Global()`
+instead, or it would take the numbers out of the timeline.
+
+`RuntimeMetrics` samples twice a second on its own timer, independent of the reporting
+interval. Every counter is read behind its own try/catch and dropped for the rest of the run
+if the platform does not have it. Socket bytes come from an `EventListener` on the runtime's
+`System.Net.Sockets` event source, which is entirely best-effort.
+
+The metrics are reset when bombing starts, so the series they report cover the same window
+every other number in the report does — warm-up is not part of it.
+
 ### Logging
 
 Logging is `Microsoft.Extensions.Logging` with **ZLogger** providers behind it. There are
@@ -195,6 +220,10 @@ is the file/user logger.
   zeroes the jitter for those segments; changing that silently makes `copies:` a lie.
 - **Timing is measured in ticks and time buckets**, not `DateTime`. Don't reintroduce
   wall-clock arithmetic on the hot path.
+- **`MetricUnit` carries its own decimal precision, and the default is not zero.**
+  `MetricUnit.None` keeps two decimals because a bare number could be anything;
+  `Count` and `Bytes` keep none. A unit with the wrong precision silently rounds a
+  fractional histogram to zero.
 - **The console live table and the reports read the same stats records.** Changing a stats
   record means touching `Statistics.cs`, every report writer, and the console renderer.
 - **The HTML report's view model is the serialized `SessionResult`.** Renaming a stats

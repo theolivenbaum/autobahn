@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
+using Autobahn.Metrics;
 using Autobahn.Stats;
 
 namespace Autobahn;
@@ -15,4 +16,7 @@ public interface IScenarioInitContext
     IConfiguration CustomSettings { get; }
 
     ILogger Logger { get; }
+
+    /// <summary>This run's metrics. The natural place to register the ones a scenario writes to.</summary>
+    IMetricRegistry Metrics { get; }
 }

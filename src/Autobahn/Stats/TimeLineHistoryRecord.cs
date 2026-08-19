@@ -4,5 +4,9 @@ namespace Autobahn.Stats;
 public sealed record TimeLineHistoryRecord
 {
     public required ScenarioStats[] ScenarioStats { get; init; }
+
+    /// <summary>What the metrics did over this interval, ordered by name.</summary>
+    public MetricStats[] Metrics { get; init; } = [];
+
     public required TimeSpan Duration { get; init; }
 }

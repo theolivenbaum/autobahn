@@ -87,7 +87,7 @@ internal sealed class TestHost : IDisposable
         var sessionResult = await reportingManager.GetSessionResult(GetCurrentHostInfo()).ConfigureAwait(false);
 
         var completionContext = ContextResolver.CreateBaseContext(
-            sessionArgs.TestInfo, GetCurrentHostInfo, _dep.Logger);
+            sessionArgs.TestInfo, GetCurrentHostInfo, _dep.Logger, _dep.Metrics.Registry);
 
         await TestHostScenario
             .RunCompletionHooks(_dep, completionContext, _targetScenarios, sessionResult.FinalStats)
@@ -106,7 +106,8 @@ internal sealed class TestHost : IDisposable
 
         return TestHostConsole.DisplayStatus(_dep, "Initializing scenarios...", async consoleStatus =>
         {
-            var baseContext = ContextResolver.CreateBaseContext(sessionArgs.TestInfo, GetCurrentHostInfo, _dep.Logger);
+            var baseContext = ContextResolver.CreateBaseContext(
+                sessionArgs.TestInfo, GetCurrentHostInfo, _dep.Logger, _dep.Metrics.Registry);
 
             var pluginsInit = await WorkerPlugins.Init(_dep, baseContext).ConfigureAwait(false);
             if (pluginsInit.IsError)
@@ -159,6 +160,11 @@ internal sealed class TestHost : IDisposable
         _stopped = false;
         _currentOperation = OperationType.Bombing;
         _currentSchedulers = schedulers;
+
+        // The metrics start clean at the bombing phase, so the series they report cover the
+        // same window every other number in the report does. Warm-up is not part of it.
+        _dep.Metrics.Reset();
+        _dep.Metrics.Start();
 
         _dep.LogInfo("Starting bombing...");
 
@@ -307,7 +313,8 @@ internal sealed class TestHost : IDisposable
 
         await TestHostConsole.DisplayStatus(_dep, "Cleaning scenarios...", async consoleStatus =>
         {
-            var baseContext = ContextResolver.CreateBaseContext(_sessionArgs.TestInfo, GetCurrentHostInfo, _dep.Logger);
+            var baseContext = ContextResolver.CreateBaseContext(
+                _sessionArgs.TestInfo, GetCurrentHostInfo, _dep.Logger, _dep.Metrics.Registry);
             await TestHostScenario.CleanScenarios(_dep, consoleStatus, baseContext, scenarios).ConfigureAwait(false);
 
             _stopped = true;
@@ -357,7 +364,8 @@ internal sealed class TestHost : IDisposable
                 ScenarioStatsActor = statsActor,
                 ExecStopCommand = ExecStopCommand,
                 TestInfo = _sessionArgs.TestInfo,
-                GetHostInfo = GetCurrentHostInfo
+                GetHostInfo = GetCurrentHostInfo,
+                Metrics = _dep.Metrics.Registry
             };
 
             var scheduler = new ScenarioScheduler(scnDep);

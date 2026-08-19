@@ -146,6 +146,14 @@ public static class AutobahnRunner
         context with { CancellationToken = cancellationToken };
 
     /// <summary>
+    /// Stops collecting the load generator's own CPU, memory, GC, thread-pool and socket
+    /// counters. They are collected by default, and are what let a run show it was not itself
+    /// the bottleneck; turn them off only when something else is already watching the process.
+    /// </summary>
+    public static AutobahnContext WithoutRuntimeMetrics(this AutobahnContext context) =>
+        context with { EnableRuntimeMetrics = false };
+
+    /// <summary>
     /// Leaves Ctrl+C to the runtime instead of turning it into an early, reported stop.
     /// The default is to handle it.
     /// </summary>

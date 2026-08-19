@@ -18,7 +18,7 @@ public class SchedulerBenchmarks
     private SimulationPlanItem _inject = null!;
 
     private static SimulationPlanItem Item(LoadSimulation value) =>
-        SimulationPlan.Create([value]).Value[0];
+        SimulationPlan.Create("bench", [value]).Value[0];
 
     [GlobalSetup]
     public void Setup()
@@ -39,7 +39,7 @@ public class SchedulerBenchmarks
     /// <summary>Returns the segment count rather than the plan: the plan type is internal.</summary>
     [Benchmark]
     public int BuildLoadPlan() =>
-        SimulationPlan.Create(
+        SimulationPlan.Create("bench",
         [
             Simulation.RampingConstant(50, TimeSpan.FromSeconds(30)),
             Simulation.KeepConstant(50, TimeSpan.FromMinutes(5)),

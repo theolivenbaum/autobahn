@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Autobahn.Metrics;
 using Autobahn.Configuration;
 using Autobahn.Internal.Domain;
 using Autobahn.Stats;
@@ -145,13 +146,16 @@ internal static class ContextResolver
     public static Result<List<RuntimeScenario>> CreateScenarios(AutobahnContext context) =>
         ScenarioFactory.CreateScenarios(context.RegisteredScenarios);
 
-    public static IBaseContext CreateBaseContext(TestInfo testInfo, Func<HostInfo> getHostInfo, ILogger logger) =>
-        new BaseContext(testInfo, getHostInfo, logger);
+    public static IBaseContext CreateBaseContext(
+        TestInfo testInfo, Func<HostInfo> getHostInfo, ILogger logger, IMetricRegistry metrics) =>
+        new BaseContext(testInfo, getHostInfo, logger, metrics);
 
-    private sealed class BaseContext(TestInfo testInfo, Func<HostInfo> getHostInfo, ILogger logger) : IBaseContext
+    private sealed class BaseContext(
+        TestInfo testInfo, Func<HostInfo> getHostInfo, ILogger logger, IMetricRegistry metrics) : IBaseContext
     {
         public TestInfo TestInfo => testInfo;
         public ILogger Logger => logger;
         public HostInfo GetHostInfo() => getHostInfo();
+        public IMetricRegistry Metrics => metrics;
     }
 }

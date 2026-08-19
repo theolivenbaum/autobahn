@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Autobahn.Metrics;
 using Autobahn.Stats;
 
 namespace Autobahn;
@@ -13,6 +14,12 @@ public interface IScenarioContext
     ScenarioInfo ScenarioInfo { get; }
     HostInfo HostInfo { get; }
     ILogger Logger { get; }
+
+    /// <summary>
+    /// This run's metrics. Every copy of every scenario writes to the same registry, so a
+    /// metric is a series over the run rather than over one copy - name it accordingly.
+    /// </summary>
+    IMetricRegistry Metrics { get; }
 
     /// <summary>How many iterations this copy has started, counting the current one.</summary>
     int InvocationNumber { get; }

@@ -6,6 +6,7 @@ using Autobahn.Internal.Domain;
 using Autobahn.Internal.Domain.Scheduler;
 using Autobahn.Internal.Infra;
 using Autobahn.Internal.Services.Reports;
+using Autobahn.Metrics;
 using Autobahn.Stats;
 
 namespace Autobahn.Internal.Services.TestHost;
@@ -61,6 +62,44 @@ internal static class TestHostConsole
             table.AddColumn(new TableColumn("ok data transfer (KB)"));
 
             return table;
+        }
+
+        /// <summary>
+        /// The load generator's own health, beside the scenario numbers. Live, this is the
+        /// column that says whether a sagging throughput is the target's fault or the
+        /// generator's, which is the whole reason the runtime metrics exist.
+        /// </summary>
+        private static Table BuildMetricsTable()
+        {
+            var table = new Table { Border = TableBorder.Square };
+
+            table.AddColumn(new TableColumn("metric"));
+            table.AddColumn(new TableColumn("current"));
+            table.AddColumn(new TableColumn("min"));
+            table.AddColumn(new TableColumn("mean"));
+            table.AddColumn(new TableColumn("max"));
+
+            table.Caption = new TableTitle("load generator");
+
+            return table;
+        }
+
+        private static void RenderMetricsTable(Table table, IReadOnlyList<MetricStats> metrics)
+        {
+            table.Rows.Clear();
+
+            foreach (var metric in metrics)
+            {
+                var unit = string.IsNullOrEmpty(metric.Unit) ? "" : $" {metric.Unit}";
+                var isCounter = metric.Kind == MetricKind.Counter;
+
+                table.AddRow(
+                    ConsoleRender.EscapeMarkup(metric.Name),
+                    $"{ConsoleRender.BlueColor(metric.Current)}{unit}",
+                    isCounter ? "" : $"{ConsoleRender.BlueColor(metric.Min)}{unit}",
+                    isCounter ? "" : $"{ConsoleRender.BlueColor(metric.Mean)}{unit}",
+                    isCounter ? "" : $"{ConsoleRender.BlueColor(metric.Max)}{unit}");
+            }
         }
 
         private static void RenderTable(Table table, IReadOnlyList<ScenarioStats> scenariosStats)
@@ -126,7 +165,9 @@ internal static class TestHostConsole
             var table = BuildTable();
             table.Caption = new TableTitle("real-time stats table");
 
-            var liveTable = AnsiConsole.Live(table);
+            var metricsTable = BuildMetricsTable();
+
+            var liveTable = AnsiConsole.Live(new Rows(table, metricsTable));
             liveTable.AutoClear = false;
             liveTable.Overflow = VerticalOverflow.Ellipsis;
             liveTable.Cropping = VerticalOverflowCropping.Bottom;
@@ -144,7 +185,14 @@ internal static class TestHostConsole
                         var withinPlan = maxDuration is null || currentTime <= maxDuration;
 
                         if (withinPlan && refreshTableCounter == 0)
+                        {
                             RenderTable(table, scnSchedulers.Select(x => x.ConsoleScenarioStats).ToArray());
+
+                            // The registry's own snapshot, not the manager's: closing an
+                            // interval belongs to the reporting manager, and doing it here
+                            // would take the numbers out of the timeline behind the report.
+                            RenderMetricsTable(metricsTable, dep.Metrics.Registry.Global());
+                        }
 
                         if (withinPlan)
                         {

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using ZLogger;
 using Autobahn.Internal.Domain;
@@ -29,6 +30,10 @@ internal sealed class ReportingManager : IReportingManager
     private readonly TimeSpan _timerMaxDuration;
     private readonly System.Timers.Timer _buildRealtimeStatsTimer;
 
+    // What the metrics did in each closed interval, keyed the same way the scheduler stats
+    // are so the two line up in the timeline.
+    private readonly ConcurrentDictionary<TimeSpan, MetricStats[]> _intervalMetrics = new();
+
     private TimeSpan _curDuration = TimeSpan.Zero;
 
     public ReportingManager(IGlobalDependency dep, IReadOnlyList<ScenarioScheduler> schedulers, SessionArgs sessionArgs)
@@ -58,6 +63,7 @@ internal sealed class ReportingManager : IReportingManager
         }
 
         _curDuration = duration;
+        _intervalMetrics[duration] = _dep.Metrics.CloseInterval();
 
         // Fire and forget: the schedulers answer on their own actors, and a slow answer must
         // never hold up the next tick or the run itself.
@@ -78,7 +84,7 @@ internal sealed class ReportingManager : IReportingManager
 
     public async Task<SessionResult> GetSessionResult(HostInfo hostInfo)
     {
-        var history = TimeLineHistory.Create(_schedulers.Select(x => x.AllRealtimeStats));
+        var history = TimeLineHistory.Create(_schedulers.Select(x => x.AllRealtimeStats), _intervalMetrics);
         var finalStats = await GetFinalStats(hostInfo).ConfigureAwait(false);
         var hints = GetHints(finalStats);
 
@@ -91,7 +97,7 @@ internal sealed class ReportingManager : IReportingManager
         var sessionStats = Statistics.CreateSessionStats(_sessionArgs.TestInfo, hostInfo, scenarioStats);
         var pluginStats = await WorkerPlugins.GetStats(_dep, sessionStats).ConfigureAwait(false);
 
-        return sessionStats with { PluginStats = pluginStats };
+        return sessionStats with { PluginStats = pluginStats, Metrics = _dep.Metrics.Global() };
     }
 
     private HintResult[] GetHints(SessionStats finalStats)

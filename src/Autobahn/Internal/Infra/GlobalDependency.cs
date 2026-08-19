@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Autobahn.Configuration;
+using Autobahn.Internal.Domain.Metrics;
 using Autobahn.Plugins;
 
 namespace Autobahn.Internal.Infra;
@@ -14,6 +15,9 @@ internal interface IGlobalDependency
     ILogger Logger { get; }
     ILogger ConsoleLogger { get; }
     IReadOnlyList<IWorkerPlugin> WorkerPlugins { get; }
+
+    /// <summary>This run's metrics: the registry user code writes to, and the runtime collector.</summary>
+    MetricsManager Metrics { get; }
 }
 
 internal sealed class GlobalDependency : IGlobalDependency, IDisposable
@@ -36,6 +40,8 @@ internal sealed class GlobalDependency : IGlobalDependency, IDisposable
 
         ConsoleLogger = _consoleLoggerFactory.CreateLogger("Autobahn");
         Logger = _loggerFactory.CreateLogger("Autobahn");
+
+        Metrics = new MetricsManager(Logger, context.EnableRuntimeMetrics);
     }
 
     public ApplicationType ApplicationType { get; }
@@ -44,9 +50,11 @@ internal sealed class GlobalDependency : IGlobalDependency, IDisposable
     public ILogger Logger { get; }
     public ILogger ConsoleLogger { get; }
     public IReadOnlyList<IWorkerPlugin> WorkerPlugins { get; }
+    public MetricsManager Metrics { get; }
 
     public void Dispose()
     {
+        Metrics.Dispose();
         _loggerFactory.Dispose();
         _consoleLoggerFactory.Dispose();
     }

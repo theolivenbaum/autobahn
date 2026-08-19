@@ -204,30 +204,30 @@ The whole engine is C#. What is left of this section is the benchmark work, call
 The single biggest gap. 4.1.2 measures latency, throughput, status codes and data transfer
 per step; it has no notion of a *metric* that is neither of those.
 
-- [ ] **A metrics subsystem alongside the existing stats pipeline.** A second, independent
+- [x] **A metrics subsystem alongside the existing stats pipeline.** A second, independent
   accumulator that collects named numeric series over the run, aggregated per reporting
   interval and over the whole session, and flushed through the same path that already
   feeds the console and the reports.
-- [ ] **Metric kinds.** At minimum: *counter* (a value that moves up and down over the run),
+- [x] **Metric kinds.** At minimum: *counter* (a value that moves up and down over the run),
   *gauge* (the current value, last write wins), and *histogram* (a distribution, reported
   with percentiles). Each metric carries a name, a unit of measure for display, and a
   scaling factor so a raw value (bytes) can be reported in a readable unit (MB).
-- [ ] **Built-in runtime metrics.** Collect process and runtime health during the run
+- [x] **Built-in runtime metrics.** Collect process and runtime health during the run
   without the user asking: CPU usage, working set, GC heap size, thread pool queue length
   and thread count, and bytes sent/received at the socket level. These are what turn "the
   target got slower" into "the load generator ran out of thread pool" — a load test that
   cannot prove it was not itself the bottleneck is not evidence.
-  - [ ] Sample on a fixed interval, independent of the reporting interval, and aggregate.
-  - [ ] Make the collector's own cost negligible and prove it with a benchmark.
-  - [ ] Degrade gracefully where a counter is unavailable on a platform, rather than failing
+  - [x] Sample on a fixed interval, independent of the reporting interval, and aggregate.
+  - [x] Make the collector's own cost negligible and prove it with a benchmark.
+  - [x] Degrade gracefully where a counter is unavailable on a platform, rather than failing
         the run.
-- [ ] **User-defined metrics.** Let a scenario create a counter or gauge, register it during
+- [x] **User-defined metrics.** Let a scenario create a counter or gauge, register it during
   scenario init, write to it from scenario or step code with negligible overhead, and read
   the final value off the run result afterwards. This is how someone tracks queue depth,
   cache hit ratio, or a business counter next to their latency numbers.
-- [ ] **Stable, deterministic ordering of metric names** in every output, so a diff between
+- [x] **Stable, deterministic ordering of metric names** in every output, so a diff between
   two runs is a diff of values and not of row order.
-- [ ] **Metrics in every output surface.** Console live table, txt/csv/md/html reports, and
+- [x] **Metrics in every output surface.** Console live table, txt/csv/md/html reports, and
   the run artifact (section 5) that the web UI and run-to-run comparison read.
 
 ## 2. Thresholds (pass/fail criteria)
