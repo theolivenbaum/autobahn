@@ -16,8 +16,9 @@ decisions govern everything below:
 1. **Pure C#.** Every F# file in the engine gets rewritten in C#. No new F# is added.
 2. **.NET 10.** Not `netstandard2.0`, not multi-targeting. Use what the current runtime
    offers rather than working around a decade-old floor. The one planned exception is the
-   web UI's projects, which have to meet the Transpose compiler at `netstandard2.0` — see
-   TODO.md.
+   web UI's projects, which target `netstandard2.0` because that is what Tesserae and the
+   Transpose compiler build against — a framework constraint, not a language one; Transpose
+   supports `LangVersion latest`. See TODO.md.
 3. **No clustering.** The cluster code inherited from the fork point is removed, not
    preserved.
 

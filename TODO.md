@@ -368,13 +368,20 @@ Three new projects:
   Referenced by both the host and the UI, so the wire format is checked by the compiler on
   both ends and cannot drift.
 
-  **This one project is the deliberate exception to the .NET 10 rule.** Tesserae and the
-  Transpose compiler build against `netstandard2.0` with an older language level, so a
-  project the UI references has to meet them there: plain DTOs, no records with modern
-  syntax, no generic-math or span-flavoured APIs, no source generators. Either target
-  `netstandard2.0` alone or multi-target it with .NET 10, and keep the types dull on
-  purpose — this is a schema, not a place for clever C#. Everything else in the repository
-  is .NET 10 only.
+  **This one project is the deliberate exception to the .NET 10 rule**, but a narrower
+  exception than it first looks. Tesserae and the Transpose compiler build against
+  `netstandard2.0`, so a project the UI references has to target it too — alone, or
+  multi-targeted with .NET 10 for the host's benefit.
+
+  The *language* is not the constraint: Transpose supports `LangVersion latest`, so
+  records, pattern matching, init-only properties and file-scoped namespaces are all
+  available and the DTOs can read like modern C#. What stays off the table is what the
+  target framework and the transpiled BCL cannot provide — .NET-10-only APIs, generic math,
+  span-flavoured overloads, source generators. Two things to settle when the project is
+  created: whether `record` and `init` need an `IsExternalInit` shim at `netstandard2.0`,
+  and which BCL types Transpose actually implements for the shapes being serialised. Keep
+  the DTOs plain regardless — this is a schema both ends have to agree on, not a place for
+  clever C#. Everything else in the repository is .NET 10 only.
 - **`Autobahn.Ui`** — the Tesserae app, C# compiled to JS/CSS/HTML by Transpose at build
   time; the output is embedded into the CLI assembly as resources. Also `netstandard2.0`,
   for the same reason.
