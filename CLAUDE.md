@@ -53,31 +53,46 @@ back, it will be designed fresh.
 
 ## Build and test
 
-Use the .NET 10 SDK. Until the port completes, the tree still builds as the F# solution it
-was forked as:
+Use the .NET 10 SDK. From the repository root, plain commands with no arguments work and
+are the intended way to build and test:
 
 ```bash
-dotnet restore NBomber.sln
-dotnet build NBomber.sln
-dotnet test tests/NBomber.IntegrationTests/NBomber.IntegrationTests.fsproj --filter CI!=disable
+dotnet build
+dotnet test --filter CI!=disable
 ```
+
+Keep it that way. `Autobahn.slnx` is the only solution at the root and holds exactly two
+projects — the engine and its tests — so `dotnet build` finds one solution and builds the
+product. If you add a project to the root solution, adding one that cannot build from a
+clean clone breaks the plain command for everyone.
 
 The `CI!=disable` filter skips tests that need long wall-clock time or external services.
 Run the full suite locally before pushing anything that touches the scheduler, the stats
 actor or the reporting pipeline — those are the areas where a green filtered run still
 hides a regression.
 
-**CI is off.** The GitHub Actions workflows are parked as
-`.github/workflows/*.yml.disable`, which Actions ignores — they build a solution that is
-about to be rewritten and publish under the upstream package identity. Nothing runs on
-push, so the local commands above are the only check there is until CI is rebuilt. Don't
-re-enable a workflow by renaming it back; write the replacement (see TODO.md).
+Two satellite solutions are deliberately **not** in the root build:
 
-`build.cake` is the legacy Cake pipeline inherited from NBomber. It still references
-PragmaticFlow plugin repositories and a `src/NBomber.Contracts` project that does not exist
-here; it is not part of the working build and will be replaced (see TODO.md). `build.ps1`
-and `build.sh` are its bootstrappers and are equally dead — they are left in place rather
-than disabled because nothing invokes them automatically.
+- `examples/Examples.slnx` — the examples. Two of them still reference upstream NBomber
+  packages from NuGet (the engine itself, the HTTP and data helpers, a sink), which is
+  wrong for a fork and will break the moment the rename lands. They are on the list to be
+  rewritten against the local project (see TODO.md); until then they stay out of the
+  default build rather than making a clean `dotnet build` depend on upstream binaries.
+- `performance/Performance.slnx` — the BenchmarkDotNet projects. Not something you want
+  compiled on every routine build.
+
+Build either explicitly when you need it: `dotnet build examples/Examples.slnx`.
+
+**CI is off.** The GitHub Actions workflows are parked as
+`.github/workflows/*.yml.disable`, which Actions ignores — they build a solution that no
+longer exists and publish under the upstream package identity. Nothing runs on push, so
+the local commands above are the only check there is until CI is rebuilt. Don't re-enable
+a workflow by renaming it back; write the replacement (see TODO.md).
+
+The legacy Cake pipeline is parked the same way: `build.cake.disable`, `build.ps1.disable`,
+`build.sh.disable`. It cloned upstream plugin repositories and referenced a
+`src/NBomber.Contracts` project that does not exist here. Nothing in the current build uses
+it, and its replacement is a roadmap item.
 
 ## Architecture
 

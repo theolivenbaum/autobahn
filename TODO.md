@@ -140,21 +140,34 @@ The bulk of the work. Port file by file, bottom-up, keeping the suite green thro
   for one release so an existing test suite can move over by changing a `using`.
 - [ ] **Package identity and metadata.** Authors, description, repository URL, icon, tags,
   license expression (`Apache-2.0`), release notes, symbols and deterministic builds.
-- [ ] **Replace the legacy build script.** The inherited Cake pipeline clones upstream
-  plugin repositories and references projects that do not exist here. Replace with a plain
-  `dotnet build` / `dotnet pack` pipeline plus a small script for the release steps.
+- [x] **Retire the legacy build script.** The inherited Cake pipeline cloned upstream plugin
+  repositories and referenced projects that do not exist here. Parked as
+  `build.cake.disable` / `build.ps1.disable` / `build.sh.disable`; delete once nothing
+  refers to it.
+- [x] **A plain `dotnet build` at the root works, and stays working.** One solution file at
+  the root (`Autobahn.slnx`, already the newer format) holding the engine and its tests, so
+  `dotnet build` and `dotnet test` need no arguments. Examples and benchmarks live in their
+  own solutions, out of the default build.
+- [ ] **Rework the examples and fold them back in.** Two of them reference upstream NBomber
+  packages from NuGet — the engine, the HTTP and data helpers, a sink — which is wrong for
+  a fork, breaks the moment the rename lands, and is the reason they are out of the root
+  solution today. Point them at the local project, port them alongside the C# rewrite, and
+  once they build from a clean clone put them back in the root solution so they cannot rot
+  unnoticed.
+- [ ] **Packaging.** `dotnet pack` producing a correct package, plus a small script for the
+  release steps. No build framework.
 - [ ] **CI, from scratch.** The inherited GitHub Actions workflows are parked — renamed to
   `.github/workflows/*.yml.disable` so Actions ignores them — because they build a solution
-  that is about to be rewritten, pin an old SDK, and publish to NuGet under the upstream
-  package identity. Re-enable only once there is something worth gating: build and test on
+  that no longer exists, pin an old SDK, and publish to NuGet under the upstream package
+  identity. Re-enable only once there is something worth gating: build and test on
   push and PR to `main`, publish on tag rather than on every push. One target framework
   means no matrix — keep it that way.
 - [ ] **Dependency sweep.** Audit and update dependencies, drop packages the C# engine no
   longer needs (several exist only to make F# ergonomic), and add automated vulnerability
   scanning to CI.
-- [ ] **Repository hygiene.** Newer solution format, file-scoped namespaces, nullable
-  reference types enabled solution-wide, `Directory.Build.props` for shared settings, and
-  an `.editorconfig`-driven format check in CI.
+- [ ] **Repository hygiene.** File-scoped namespaces, nullable reference types enabled
+  solution-wide, `Directory.Build.props` so the target framework and shared settings are
+  declared once instead of per project, and an `.editorconfig`-driven format check in CI.
 - [ ] **Keep and extend the test suite.** The upstream development line dropped its
   integration tests. Autobahn keeps them, ports them, and every item below lands with tests.
 

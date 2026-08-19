@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="../src/NBomber/NBomber.fsproj" />
+  <Project Path="CSharpDev/CSharpDev.csproj" />
+  <Project Path="CSharpProd/CSharpProd.csproj" />
+  <Project Path="xUnitExample/xUnitExample.csproj" />
+</Solution>

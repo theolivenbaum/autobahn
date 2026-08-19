@@ -107,22 +107,32 @@ users.
 
 ## Building
 
-The target is the .NET 10 SDK. Until the port completes, the tree still builds as the
-F# solution it was forked as (see [global.json](global.json)).
+You need the .NET 10 SDK. From the repository root:
 
 ```bash
-dotnet restore NBomber.sln
-dotnet build NBomber.sln
-dotnet test tests/NBomber.IntegrationTests/NBomber.IntegrationTests.fsproj --filter CI!=disable
+dotnet build
+dotnet test --filter CI!=disable
+```
+
+That is the whole story — no build script, no arguments, no bootstrapper. The
+`CI!=disable` filter skips the tests that need long wall-clock time or external services.
+
+The examples and the benchmarks have their own solutions and are not part of the root
+build; build them explicitly if you want them:
+
+```bash
+dotnet build examples/Examples.slnx
+dotnet build performance/Performance.slnx
 ```
 
 ## Repository layout
 
 ```
+Autobahn.slnx         the root solution: the engine and its tests
 src/NBomber/          the engine — F# today, being ported to C#
 tests/                integration tests
-examples/             runnable examples
-performance/          benchmarks
+examples/             runnable examples (own solution)
+performance/          benchmarks (own solution)
 assets/               images
 ```
 
