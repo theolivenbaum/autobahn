@@ -8,19 +8,17 @@ Guidance for working in this repository.
 [NBomber](https://github.com/PragmaticFlow/NBomber) at version **4.1.2**, the last release
 published under Apache-2.0.
 
-**The target is a pure C# library on .NET 10.** The code you will find in the tree today is
-still the fork point: F#, targeting `netstandard2.0`, with a C#-friendly API layered over an
-F#-idiomatic one. That is the starting state, not the destination. Three directional
-decisions govern everything below:
+**It is a pure C# library on .NET 10.** The fork point was F# targeting `netstandard2.0`,
+with a C#-friendly API layered over an F#-idiomatic one. That is gone: the engine, the API
+and the tests are C#, there is one public surface, and no consumer needs `FSharp.Core`.
+Three directional decisions govern everything below:
 
-1. **Pure C#.** Every F# file in the engine gets rewritten in C#. No new F# is added.
-2. **.NET 10.** Not `netstandard2.0`, not multi-targeting. Use what the current runtime
-   offers rather than working around a decade-old floor. The one planned exception is the
-   web UI's projects, which target `netstandard2.0` because that is what Tesserae and the
-   Transpose compiler build against — a framework constraint, not a language one; Transpose
-   supports `LangVersion latest`. See TODO.md.
-3. **No clustering.** The cluster code inherited from the fork point is removed, not
-   preserved.
+1. **Pure C#.** No F# anywhere, and no F#-only constructs on the public surface.
+2. **.NET 10.** Not `netstandard2.0`, not multi-targeting. The one exception is the web
+   UI's two projects, which target `netstandard2.0` because that is what Tesserae and the
+   Transpose compiler build against — a framework constraint, not a language one;
+   Transpose supports `LangVersion latest`. See TODO.md.
+3. **No clustering.** The cluster code inherited from the fork point is removed.
 
 [TODO.md](TODO.md) is the roadmap and the plan of record. [README.md](README.md) is the
 user-facing introduction.
@@ -39,17 +37,17 @@ branch.
 ### Out of scope
 
 **Clustering** — coordinators, agents, distributed test execution, cluster monitoring — is
-not part of Autobahn, and the seams the fork point left behind are being deleted rather
-than kept dormant: `AddFromAgent` on the stats actor, `getScenarioClusterCount` in the test
-host, the coordinator/agent node types, and the stats-merging paths that exist only to
-combine results from several nodes.
+not part of Autobahn. The seams the fork point left behind are gone: the agent-stats intake
+on the stats actor, the per-scenario cluster count in the test host, the coordinator/agent
+node types, `ScenarioPartition`, `TestInfo.ClusterId`, and the stats-merging paths that
+existed only to combine results from several nodes.
 
-Deleting them is not tidiness for its own sake. They force the stats pipeline to be
-merge-shaped when it only ever merges one node's results, and porting that shape to C#
-would carry the complexity forward for no user. When you touch a file that still has a
-cluster seam, take the seam out. Never build on one, and do not reintroduce the concept
-under another name ("nodes", "workers", "shards") — if distributed execution ever comes
-back, it will be designed fresh.
+Do not reintroduce the concept under another name ("nodes", "workers", "shards"). If
+distributed execution ever comes back, it will be designed fresh.
+
+**Real-time reporting sinks** are also out. The `IReportingSink` contract, its registration
+API and its plumbing were removed: Autobahn produces reports and console output, and the
+live view of a running test is the web UI's job (TODO.md section 8), not a sink's.
 
 ## Build and test
 
@@ -58,75 +56,73 @@ are the intended way to build and test:
 
 ```bash
 dotnet build
-dotnet test --filter CI!=disable
+dotnet test
 ```
 
-Keep it that way. `Autobahn.slnx` is the only solution at the root and holds exactly two
-projects — the engine and its tests — so `dotnet build` finds one solution and builds the
-product. If you add a project to the root solution, adding one that cannot build from a
-clean clone breaks the plain command for everyone.
+Keep it that way. `Autobahn.slnx` is the only solution at the root and holds the engine,
+the CLI and the test project — all of which build from a clean clone. If you add a project
+to the root solution, adding one that cannot build from a clean clone breaks the plain
+command for everyone.
 
-The `CI!=disable` filter skips tests that need long wall-clock time or external services.
-Run the full suite locally before pushing anything that touches the scheduler, the stats
-actor or the reporting pipeline — those are the areas where a green filtered run still
-hides a regression.
+The tests run on **TUnit**, on Microsoft.Testing.Platform. `global.json` opts `dotnet test`
+into that runner (`"test": { "runner": "Microsoft.Testing.Platform" }`); without it the
+.NET 10 SDK tries VSTest and fails. Most tests really do run short load tests in process,
+so the full suite takes several minutes. The slowest are tagged `[Category("slow")]`:
 
-Two satellite solutions are deliberately **not** in the root build:
+```bash
+dotnet test -- --treenode-filter "/*/*/*/*[Category!=slow]"
+```
 
-- `examples/Examples.slnx` — the examples. Two of them still reference upstream NBomber
-  packages from NuGet (the engine itself, the HTTP and data helpers, a sink), which is
-  wrong for a fork and will break the moment the rename lands. They are on the list to be
-  rewritten against the local project (see TODO.md); until then they stay out of the
-  default build rather than making a clean `dotnet build` depend on upstream binaries.
-- `performance/Performance.slnx` — the BenchmarkDotNet projects. Not something you want
-  compiled on every routine build.
+Run the *full* suite before pushing anything that touches the scheduler, the stats actor or
+the reporting pipeline — those are the areas where a green filtered run still hides a
+regression.
 
-Build either explicitly when you need it: `dotnet build examples/Examples.slnx`.
+Not in the root build:
 
-**CI is off.** The GitHub Actions workflows are parked as
-`.github/workflows/*.yml.disable`, which Actions ignores — they build a solution that no
-longer exists and publish under the upstream package identity. Nothing runs on push, so
-the local commands above are the only check there is until CI is rebuilt. Don't re-enable
-a workflow by renaming it back; write the replacement (see TODO.md).
+- `examples/Examples.slnx` — the examples. Kept separate so a routine build is the product,
+  not the samples. Build it explicitly: `dotnet build examples/Examples.slnx`.
+- `src/Autobahn.Ui/Autobahn.Ui.slnx` — the web UI and its contracts. Building it needs the
+  Transpose compiler installed as a global tool, which a clean clone does not have.
 
-The legacy Cake pipeline is parked the same way: `build.cake.disable`, `build.ps1.disable`,
-`build.sh.disable`. It cloned upstream plugin repositories and referenced a
-`src/NBomber.Contracts` project that does not exist here. Nothing in the current build uses
-it, and its replacement is a roadmap item.
+**CI is off.** There are no workflows at all: the inherited ones built a solution that no
+longer exists and published under the upstream package identity, so they were deleted
+rather than parked. Nothing runs on push, and the local commands above are the only check
+there is. Writing the replacement is a roadmap item (see TODO.md).
 
 ## Architecture
 
-The layout below is the fork point's. The port to C# keeps this shape — the layering is
-sound and is the reason the engine is portable at all — but renames files to `.cs`, and the
-`Api/FSharp.fs` / `Api/CSharp.fs` split collapses into one surface. Read it as the map of
-what exists and what the C# version is expected to look like.
-
-The dependency direction is strictly one way: **Api → DomainServices → Domain → Extensions/Infra**.
+The dependency direction is strictly one way:
+**public API → Internal.Services → Internal.Domain → Internal.Infra**.
 
 ```
-src/NBomber/
-  Api/               public surface: Shared.fs, FSharp.fs, CSharp.fs
-  Contracts.fs       NBomberContext, ScenarioProps, the types users touch
-  Configuration.fs   JSON config model (nbomber-config.json / infra-config.json)
-  Constants.fs       every tunable default in one place
-  Domain/            the engine
-    LoadSimulation.fs        validates and expands the load plan
-    Scenario.fs, Step.fs     runtime shapes of a scenario/step
-    ScenarioContext.fs       what user code sees inside a scenario
-    Concurrency/             ScenarioActor, ScenarioActorPool
-    Scheduler/               ConstantActorScheduler, OneTimeActorScheduler, ScenarioScheduler
-    Stats/                   RawMeasurementStats, Statistics, ScenarioStatsActor
-    HintsAnalyzer.fs         post-run advice
-  DomainServices/
-    NBomberContext.fs        merges code config + JSON config + CLI args
-    NBomberRunner.fs         session entry point
-    TestHost/                TestHost, TestHostScenario, TestHostConsole,
-                             ReportingManager, ReportingSinks, WorkerPlugins
-    Reports/                 Txt, Csv, Md, Html, Console
-  Infra/               Console.fs, Dependency.fs (Serilog, DI-ish globals)
-  Extensions/          DataSet.fs (data feeds), Internal.fs
-  Plugins/             PingPlugin, PsPingPlugin
-  Resources/HtmlReport/  embedded html/css/js for the static report
+src/Autobahn/
+  Scenario.cs, Step.cs, Response.cs, Simulation.cs,
+  AutobahnRunner.cs, AutobahnContext.cs,
+  ClientPool.cs, Time.cs, Converter.cs      the public API, one surface
+  Constants.cs                              every tunable default in one place
+  Contracts/                                IScenarioContext, IResponse, LoadSimulation, ScenarioProps…
+  Stats/                                    the records the reports and the API read
+  Configuration/                            JSON config model (autobahn-config.json)
+  Plugins/                                  IWorkerPlugin, Network/Ping + PsPing
+  Internal/
+    Result.cs, AppError.cs, *Error.cs       validation results and every user-facing message
+    Json/                                   System.Text.Json converters for config and the report view model
+    Domain/
+      SimulationPlan.cs                     validates and expands the load plan
+      RuntimeScenario.cs, ScenarioFactory.cs
+      ScenarioExecutionContext.cs           what user code sees inside a scenario
+      StepExecution.cs, ScenarioExecution.cs   the measured wrappers
+      HintsAnalyzer.cs                      post-run advice
+      Concurrency/                          ScenarioActor, ScenarioActorPool
+      Scheduler/                            ConstantActorScheduler, OneTimeActorScheduler, ScenarioScheduler
+      Stats/                                RawMeasurementStats, Statistics, ScenarioStatsActor
+    Infra/                                  ConsoleRender, LoggerBuilder, GlobalDependency, HostInfoProvider
+    Services/
+      ContextResolver.cs                    merges code config + JSON config + CLI args
+      SessionRunner.cs                      session entry point
+      TestHost/                             TestHost, TestHostScenario, TestHostConsole, ReportingManager, WorkerPlugins
+      Reports/                              Txt, Csv, Md, Html, Console, TextTable, MarkdownDocument
+  Resources/HtmlReport/                     embedded html/css/js for the static report
 ```
 
 ### Execution model
@@ -150,95 +146,96 @@ logger, invocation number, scenario info, test info, and per-iteration data.
 
 ### Measurement and stats
 
-Measurements are pushed into a per-scenario **`ScenarioStatsActor`**, a mailbox that owns
-all mutable stats state so nothing on the hot path takes a lock. It keeps two accumulators:
-an *interval* set (reset every reporting interval, used for real-time stats and sinks) and
-a *global* set (used for the final report). Latency and data-size distributions are
-`HdrHistogram` recordings; measurements are bucketed by time so a slow response is
-attributed to the interval it started in.
+Measurements are pushed into a per-scenario **`ScenarioStatsActor`**, a
+`System.Threading.Channels` mailbox that owns all mutable stats state so nothing on the hot
+path takes a lock. The mailbox message is a struct, so publishing a measurement allocates
+nothing. The actor keeps two accumulators: an *interval* set (reset every reporting
+interval, used for the live console table) and a *global* set (used for the final report).
+Latency and data-size distributions are `HdrHistogram` recordings; measurements are
+bucketed by time so a slow response is attributed to the interval it started in.
 
-The **`ReportingManager`** ticks on a timer at the reporting interval, asks each scheduler
-for its interval stats, feeds the console live table and every registered `IReportingSink`,
-then builds the final `NodeStats` at the end.
+The **`ReportingManager`** ticks on a timer at the reporting interval and asks each
+scheduler to close its interval, which is what feeds the console table and the timeline
+behind the final report. At the end it builds `SessionStats`.
+
+### Logging
+
+Logging is `Microsoft.Extensions.Logging` with **ZLogger** providers behind it. There are
+two loggers on purpose: `dep.ConsoleLogger` (what the operator watches) and `dep.Logger`
+(the rolling file, and anything the user attached with `AutobahnRunner.WithLogging`). The
+`dep.LogInfo` / `LogWarn` / `LogError` / `LogFatal` helpers write to both; anything logged
+straight through `dep.Logger` stays out of the console. `context.Logger` inside a scenario
+is the file/user logger.
 
 ### Things that will bite you
 
-- **`NBomber.fsproj` compile order is load-bearing** *while the engine is still F#*. F#
-  resolves top to bottom: a new file must go into the `<Compile Include>` list in the right
-  position or the build fails somewhere confusing, and a file added without an fsproj entry
-  is silently excluded. This trap disappears with the last F# file — one of the smaller
-  reasons the port is worth doing.
-- **`NBomber.Contracts` is an external NuGet package** pinned to `[4.1.1]`, not source in
-  this repo, even though `src/NBomber/Contracts.fs` also exists (that file holds the
-  runner-side context types; the package holds `IScenarioContext`, `Response`, the stats
-  records). It is an F# assembly this fork does not control, so it blocks both the C# port
-  and the rename. Vendoring it is the first roadmap item for a reason.
-- **The public API exists three times.** `Api/Shared.fs` (common), `Api/FSharp.fs` (F#
-  idiomatic), `Api/CSharp.fs` (C#-friendly overloads, `[<Extension>]` methods,
-  `ParamArray`). Until the port collapses this into one C# surface, a user-facing change
-  needs all the relevant ones or it is missing for half the users.
+- **`Autobahn.Internal.Domain.Stats` shadows `Autobahn.Stats`.** Inside the domain
+  namespaces, an unqualified `Stats.Foo` resolves to the internal one. Use a `using
+  Autobahn.Stats;` and unqualified type names rather than a `Stats.` prefix.
+- **`LoadSimulation` is a closed hierarchy, not a union the compiler checks.** The base
+  constructor is private, so only the six nested records exist, but exhaustiveness over
+  them is *not* proven by the compiler. Every switch ends in a throwing default arm, and
+  `LoadSimulationExhaustivenessTests` walks every case through every function that
+  switches on one. Adding a case means that test fails until it is handled everywhere.
 - **Timing is measured in ticks and time buckets**, not `DateTime`. Don't reintroduce
   wall-clock arithmetic on the hot path.
 - **The console live table and the reports read the same stats records.** Changing a stats
-  record means touching `Statistics.fs`, every report writer, and the console renderer.
+  record means touching `Statistics.cs`, every report writer, and the console renderer.
+- **The HTML report's view model is the serialized `SessionResult`.** Renaming a stats
+  property silently breaks `Resources/HtmlReport/index.html` and its `index.js`, which
+  address those names as strings. `ReportingTests` checks the document is assembled, not
+  that every field is bound — read the template when you rename.
+- **Spectre needs a width when there is no terminal.** With output redirected it collapses
+  every table to an ellipsis, which is exactly the CI-log case; `SessionRunner` sets a
+  fixed width in that situation. Rendering plain lines instead is TODO.md section 5.
 
 ## Conventions
 
-**New code is C#.** Write C# even when the file next to it is F#, unless you are editing an
-existing F# file in place. Do not add F# files. Do not add F#-only constructs to the public
-surface: no F# functions, options, discriminated unions or records where a C# caller has to
-reference `FSharp.Core` to use them.
-
-C# style for the ported engine:
+C# style:
 
 - `internal` by default; public is a deliberate decision about the supported surface.
 - Records and `readonly struct` for data that does not mutate; classes where identity or
   mutation is the point (the actors, the schedulers, the stats state).
-- `async`/`await` with `ValueTask` where a hot path usually completes synchronously.
+- `required` + `init` on records rather than positional parameters, except where the type
+  really is a tuple of values (the `LoadSimulation` cases, `Measurement`).
+- `async`/`await`, with `ConfigureAwait(false)` on library paths.
 - Nullable reference types enabled, and honestly annotated — not blanket `!`.
-- Validation returns a result type rather than throwing. The F# code uses `Result`/
-  `taskResult` from FsToolkit; the C# version needs one small result type of its own, not a
-  dependency on an F# library.
+- Validation returns `Result<T>` rather than throwing; the error carries its own message.
 - File-scoped namespaces, one type per file, folder structure mirroring the namespace.
 
-Rules that survive the language change:
+Rules:
 
 - Keep tunables in `Constants` rather than inlining magic numbers.
-- New user-facing errors go through the errors module so the message formatting stays in
-  one place; include the scenario name in anything scenario-scoped.
+- New user-facing errors are a record under `Internal/*Error.cs`, so the message formatting
+  stays in one place; include the scenario name in anything scenario-scoped.
 - Public API additions need an example under `examples/` and coverage under `tests/`.
-- Prefer strong typing. `obj`/boxing on the measurement path is a performance decision, not
-  a style one — don't add more of it.
-
-### Porting an F# file
-
-- Port a whole file at a time and keep its tests green across the change. A half-ported
-  module that has to interop both ways is worse than either end state.
-- Behaviour first, idiom second: get the C# passing the existing tests, then make it read
-  like C#. Do not "improve" semantics during a port — a behaviour change hidden inside a
-  translation is nearly impossible to find later.
-- Where the F# leans on a language feature C# lacks (structural equality, exhaustive
-  matching over a DU), pick the C# shape deliberately and write down why in a comment. A
-  DU over load simulations, for instance, is a sealed hierarchy or a discriminated record
-  with an enum tag — and the exhaustiveness the compiler used to guarantee now has to come
-  from tests.
-- Take out cluster seams as you pass them (see **Out of scope**).
+- Prefer strong typing. `object`/boxing on the measurement path is a performance decision,
+  not a style one — don't add more of it.
+- Prefer writing thirty lines over taking a dependency for formatting. `TextTable` and
+  `MarkdownDocument` exist because the packages they replaced brought an `FSharp.Core`
+  reference and a NullReferenceException respectively.
 
 ## Testing
 
-`tests/NBomber.IntegrationTests` is xUnit + FsCheck + Unquote today; ported tests are C#
-xUnit, with FsCheck's C# API or another property-based library where a property test earns
-its keep. Most tests really do run short load tests in-process. That makes them slow and slightly timing-sensitive:
-assert on invariants (ordering, ratios, "at least N") rather than exact counts, and mark
-anything that needs more than a few seconds or an external service with the `CI=disable`
-trait.
+`tests/Autobahn.Tests` is **TUnit**. Assertions are `await Assert.That(x).IsEqualTo(y)`;
+data-driven cases use `[Arguments(...)]` and `[MethodDataSource(...)]`.
 
-`performance/` holds BenchmarkDotNet projects for the scheduler and stats hot paths. Use
-them when changing anything under `Domain/Scheduler` or `Domain/Stats`.
+- Tests that start a real load test are marked `[NotInParallel]`. TUnit runs tests
+  concurrently by default, and two load tests sharing a machine measure each other.
+- Test classes that touch `internal` types must themselves be `internal` — a public method
+  cannot take an internal parameter. TUnit discovers internal classes fine.
+- Assert on invariants (ordering, ratios, "at least N") rather than exact counts, except
+  where an open-model plan makes the count genuinely deterministic (`Inject` at rate R for
+  N intervals is R×N).
+- Anything needing more than a few seconds of wall clock gets `[Category("slow")]`.
+- There is no property-testing library. The fork point's FsCheck properties are expressed
+  as explicit `[Arguments]` cases plus seeded random sweeps — same invariants, no
+  `FSharp.Core` in the test project.
 
 ## The web UI (planned)
 
 A Tesserae-based live web interface, served by the Autobahn CLI over Kestrel from embedded
-resources, is specified in detail in [TODO.md](TODO.md). It does not exist yet. When it
-lands it will live in its own projects (`Autobahn.Cli`, `Autobahn.Ui`, `Autobahn.Ui.Contracts`)
-and the engine must stay usable, and fully headless, without it.
+resources, is specified in detail in [TODO.md](TODO.md). The projects exist as empty
+skeletons (`src/Autobahn.Ui`, `src/Autobahn.Ui.Contracts`) with their own solution; the CLI
+(`src/Autobahn.Cli`) is an entry point and an argument surface. The engine must stay
+usable, and fully headless, without any of them.

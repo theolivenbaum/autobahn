@@ -1,0 +1,789 @@
+<!--
+    This is a template for building a report in html format.
+
+    Html report builder supports the following commands enclosed in comments:
+    - include asset: replaces a line with a style/script block specified into href/src attribute.
+                     It only works for assets that are contained in embedded resources.
+    - include view model: includes view model.
+    - remove: removes a line.
+-->
+<!DOCTYPE HTML>
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <meta http-equiv="x-ua-compatible" content="ie=edge" />
+    <title>Autobahn</title>
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.8.2/css/all.css">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700&display=swap">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.5.0/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/mdbootstrap/4.19.1/css/mdb.min.css" rel="stylesheet">
+
+    <link rel="stylesheet" href="assets/css/sidebar.css" /> <!-- include asset -->
+    <link rel="stylesheet" href="assets/css/index.css" /> <!-- include asset -->
+
+    <!-- No Data Template -->
+    <script type="text/x-template" id="no-data-template">
+        <h3>No Data</h3>
+    </script>
+
+    <!-- Scenario Header -->
+    <script type="text/x-template" id="scenario-header-template">
+        <span>
+            scenario #{{scenarioIndex + 1}}: <span class="custom mdb-color darken-1 blue-text font-weight-bold">{{scenarioName}}</span>
+        </span>
+    </script>
+
+    <!-- Host Info Table -->
+    <script type="text/x-template" id="host-info-table-template">
+        <div class="card custom" v-if="hostInfo">
+            <div class="card-header mdb-color darken-2 white-text">
+                <h6>Environment</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-hover table-sm table-cluster-info">
+                    <thead class="mdb-color lighten-2 white-text">
+                        <tr>
+                            <th>Machine Name</th>
+                            <th>OS</th>
+                            <th>.NET Runtime</th>
+                            <th>Processor</th>
+                            <th>Cores</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>{{hostInfo.MachineName}}</td>
+                            <td>{{hostInfo.OS}}</td>
+                            <td>{{hostInfo.DotNetVersion}}</td>
+                            <td>{{hostInfo.Processor}}</td>
+                            <td>{{hostInfo.CoresCount}}</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <no-data v-else></no-data>
+    </script>
+
+    <!-- Scenarios Stats Template -->
+    <script type="text/x-template" id="scenario-stats-template">
+        <p class="note">
+            iterations: <span class="text-primary">{{getRequestCount(scenarioStats)}}</span>,
+            ok: <span class="text-success">{{scenarioStats.Ok.Request.Count}}</span>,
+            fail: <span class="text-danger">{{scenarioStats.Fail.Request.Count}}</span>,
+            all data: <span class="text-primary">{{toMb(getAllBytes(scenarioStats))}}</span> MB
+        </p>
+    </script>
+
+    <!-- Scenarios Stats Table Template -->
+    <script type="text/x-template" id="scenario-stats-table-template">
+        <div class="note scenario-stats" :class="{'note-success': !failStats, 'note-danger': failStats}">
+            <p>{{statsName.toLowerCase()}} stats</p>
+            <table class="table table-hover table-striped table-bordered table-sm table-scenario-stats">
+                <thead class="mdb-color lighten-1 white-text">
+                    <tr>
+                        <th></th>
+                        <th colspan="4">request number</th>
+                        <th colspan="4">latency, ms</th>
+                        <th colspan="4">latency percentile, ms</th>
+                        <th colspan="4">data transfer</th>
+                    </tr>
+                    <tr>
+                        <th>step</th>
+                        <th>all</th>
+                        <th v-if="!failStats">&nbsp;&nbsp;&nbsp;ok&nbsp;&nbsp;&nbsp;</span></th>
+                        <th v-if="failStats">failed</th>
+                        <th>RPS</th>
+                        <th>min</th>
+                        <th>mean</th>
+                        <th>max</th>
+                        <th>StdDev</th>
+                        <th>p50</th>
+                        <th>p75</th>
+                        <th>p95</th>
+                        <th>p99</th>
+                        <th>min, KB</th>
+                        <th>mean, KB</th>
+                        <th>max, KB</th>
+                        <th>all, MB</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="(stepStats, index) in scenarioStats.StepStats" :key="`step-stats-${index}`">
+                        <td><strong>{{stepStats.StepName}}</strong></td>
+                        <td>{{stepStats.Ok.Request.Count + stepStats.Fail.Request.Count}}</td>
+                        <td v-if="!failStats">{{stepStats.Ok.Request.Count}}</td>
+                        <td v-if="failStats">{{stepStats.Fail.Request.Count}}</td>
+                        <td>{{stepStats[statsName].Request.RPS}}</td>
+                        <td>{{stepStats[statsName].Latency.MinMs}}</td>
+                        <td>{{stepStats[statsName].Latency.MeanMs}}</td>
+                        <td>{{stepStats[statsName].Latency.MaxMs}}</td>
+                        <td>{{stepStats[statsName].Latency.StdDev}}</td>
+                        <td>{{stepStats[statsName].Latency.Percent50}}</td>
+                        <td>{{stepStats[statsName].Latency.Percent75}}</td>
+                        <td>{{stepStats[statsName].Latency.Percent95}}</td>
+                        <td>{{stepStats[statsName].Latency.Percent99}}</td>
+                        <td>{{toKb(stepStats[statsName].DataTransfer.MinBytes)}}</td>
+                        <td>{{toKb(stepStats[statsName].DataTransfer.MeanBytes)}}</td>
+                        <td>{{toKb(stepStats[statsName].DataTransfer.MaxBytes)}}</td>
+                        <td>{{toMb(stepStats[statsName].DataTransfer.AllBytes)}}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </script>
+
+    <!-- Scenarios Stats Requests Number Table Template -->
+    <script type="text/x-template" id="scenario-stats-requests-number-table-template">
+        <div class="note scenario-stats" :class="{'note-success': !failStats, 'note-danger': failStats}">
+            <p>{{statsName.toLowerCase()}} stats</p>
+            <table class="table table-hover table-striped table-bordered table-sm table-scenario-stats">
+                <thead class="mdb-color lighten-1 white-text">
+                    <tr>
+                        <th></th>
+                        <th colspan="4">request number</th>
+                    </tr>
+                    <tr>
+                        <th>step</th>
+                        <th>all</th>
+                        <th v-if="!failStats">ok</th>
+                        <th v-if="failStats">failed</th>
+                        <th>RPS</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="(stepStats, index) in scenarioStats.StepStats" :key="`step-stats-${index}`">
+                        <td><strong>{{stepStats.StepName}}</strong></td>
+                        <td>{{getRequestCount(stepStats)}}</td>
+                        <td v-if="!failStats">{{stepStats.Ok.Request.Count}}</td>
+                        <td v-if="failStats">{{stepStats.Fail.Request.Count}}</td>
+                        <td>{{stepStats[statsName].Request.RPS}}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </script>
+
+    <!-- Scenarios Stats Latency Table Template -->
+    <script type="text/x-template" id="scenario-stats-latency-table-template">
+        <div class="note scenario-stats" :class="{'note-success': !failStats, 'note-danger': failStats}">
+            <p>{{statsName.toLowerCase()}} stats</p>
+            <table class="table table-hover table-striped table-bordered table-sm">
+                <thead class="mdb-color lighten-1 white-text">
+                    <tr>
+                        <th></th>
+                        <th colspan="4">latency, ms</th>
+                        <th colspan="4">latency percentile, ms</th>
+                    </tr>
+                    <tr>
+                        <th>step</th>
+                        <th>min</th>
+                        <th>mean</th>
+                        <th>max</th>
+                        <th>StdDev</th>
+                        <th>p50</th>
+                        <th>p75</th>
+                        <th>p95</th>
+                        <th>p99</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="(stepStats, index) in scenarioStats.StepStats" :key="`step-stats-${index}`">
+                        <td><strong>{{stepStats.StepName}}</strong></td>
+                        <td>{{stepStats[statsName].Latency.MinMs}}</td>
+                        <td>{{stepStats[statsName].Latency.MeanMs}}</td>
+                        <td>{{stepStats[statsName].Latency.MaxMs}}</td>
+                        <td>{{stepStats[statsName].Latency.Percent50}}</td>
+                        <td>{{stepStats[statsName].Latency.Percent75}}</td>
+                        <td>{{stepStats[statsName].Latency.Percent95}}</td>
+                        <td>{{stepStats[statsName].Latency.Percent99}}</td>
+                        <td>{{stepStats[statsName].Latency.StdDev}}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </script>
+
+    <!-- Scenarios Stats Data Transfer Table Template -->
+    <script type="text/x-template" id="scenario-stats-data-transfer-table-template">
+        <div class="note scenario-stats" :class="{'note-success': !failStats, 'note-danger': failStats}">
+            <p>{{statsName.toLowerCase()}} stats</p>
+            <table class="table table-hover table-striped table-bordered table-sm table-scenario-stats">
+                <thead class="mdb-color lighten-1 white-text">
+                    <tr>
+                        <th></th>
+                        <th colspan="4">data transfer</th>
+                    </tr>
+                    <tr>
+                        <th>step</th>
+                        <th>min, KB</th>
+                        <th>mean, KB</th>
+                        <th>max, KB</th>
+                        <th>all, MB</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr v-for="(stepStats, index) in scenarioStats.StepStats" :key="`step-stats-${index}`">
+                        <td><strong>{{stepStats.StepName}}</strong></td>
+                        <td>{{toKb(stepStats[statsName].DataTransfer.MinBytes)}}</td>
+                        <td>{{toKb(stepStats[statsName].DataTransfer.MeanBytes)}}</td>
+                        <td>{{toKb(stepStats[statsName].DataTransfer.MaxBytes)}}</td>
+                        <td>{{toMb(stepStats[statsName].DataTransfer.AllBytes)}}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </script>
+
+    <!-- Plugins Stats Table Template -->
+    <script type="text/x-template" id="plugins-stats-table-template">
+        <div class="row">
+            <div class="col">
+                <div v-for="(table, tableIndex) in tables"
+                     :key="`plugin-stats-${tableIndex}`"
+                     v-if="pluginsStats"
+                     class="card custom scenario">
+                    <div class="card-header mdb-color darken-2 white-text">
+                        <h6>plugin stats: <span class="custom mdb-color darken-1 blue-text font-weight-bold">{{table.name}}</span></h6>
+                    </div>
+                    <div class="card-body">
+                        <table class="table table-hover table-striped table-sm table-plugin-stats">
+                            <thead class="mdb-color lighten-2 white-text">
+                                <tr>
+                                    <th v-for="(col, index) in table.cols" :key="`plugin-stats-col-${index}`">
+                                        {{col}}
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="(row, index) in table.rows" :key="`plugin-stats-row-${index}`">
+                                    <td v-for="(value, colIndex) in row" :key="`plugin-stats-row-${index}-${colIndex}`">
+                                        {{value}}
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </script>
+
+    <script type="text/x-template" id="status-codes-template">
+        <div class="row">
+            <div class="col-xl-8 col-lg-8 col-md-12">
+                <div class="note">
+                    <p>status codes</p>
+                    <table class="table table-hover table-striped table-sm table-status-codes">
+                        <thead class="mdb-color lighten-1 white-text">
+                            <tr>
+                                <th>status code</th>
+                                <th>count</th>
+                                <th>message</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr v-for="(statusCode, index) in allStatusCodes" :key="`status-codes-${index}`">
+                                <td><strong :class="{'text-success': !statusCode.IsError, 'text-danger': statusCode.IsError}">{{statusCode.StatusCode}}</strong></td>
+                                <td>{{statusCode.Count}}</td>
+                                <td class="text-danger">{{statusCode.Message}}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="col-xl-4 col-lg-4 col-md-12">
+                <chart-status-codes :status-codes="allStatusCodes" v-show="showCharts"></chart-status-codes>
+            </div>
+        </div>
+
+    </script>
+
+    <script type="text/x-template" id="hints-table-template">
+        <div class="card custom">
+            <div class="card-header mdb-color darken-2 white-text">
+                <h6>hints</h6>
+            </div>
+            <div class="card-body">
+                <table class="table table-hover table-striped table-sm table-status-codes">
+                    <thead class="bg-warning white-text">
+                    <tr>
+                        <th>source</th>
+                        <th>name</th>
+                        <th>hint</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr v-for="(hint, index) in hints" :key="`hint-${index}`">
+                        <td>{{hint.SourceType}}</td>
+                        <td>{{hint.SourceName}}</td>
+                        <td>{{hint.Hint}}</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </script>
+
+</head>
+<body>
+    <div id="app">
+        <!-- Navbar -->
+        <nav class="navbar mdb-color darken-3">
+            <a class="navbar-brand" href="https://github.com/theolivenbaum/autobahn" target="_blank">
+                <img src="data:image/png;base64,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"
+                     height="44" class="d-inline-block align-top" alt="Autobahn" />
+            </a>
+            <div class="custom-control custom-switch" v-show="showChartsSwitcher" v-cloak>
+                <input type="checkbox" class="custom-control-input" id="charts-switcher" v-model="showCharts">
+                <label class="custom-control-label white-text" for="charts-switcher">Toggle Charts</label>
+            </div>
+        </nav>
+
+        <!-- Sidebar -->
+        <div id="wrapper" :class="{ active: sideBarActive }" v-cloak>
+            <div id="sidebar-wrapper" class="mdb-color darken-3">
+                <!-- Menu -->
+                <ul class="sidebar-nav">
+                    <li class="sidebar-brand">
+                        <a id="menu-toggle" href="#" @click.prevent="toggleSideBar">
+                            Menu<span class="main-icon fas fa-align-justify"></span>
+                        </a>
+                    </li>
+                </ul>
+
+                <ul class="sidebar-nav nav nav-pills mb-3" role="tablist">
+                    <li class="nav-item">
+                        <a data-toggle="pill" href="#env-view" role="tab" aria-controls="env-view"
+                           @click="selectView('environment')">
+                            Environment <span class="sub-icon sub-icon-environment fas fa-desktop"></span>
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a data-toggle="pill" href="#test-suite-view" class="active" role="tab" aria-controls="test-suite-view"
+                           @click="selectView('test-suite')">
+                            Test Suite <span class="sub-icon sub-icon-test-suite fas fa-flask"></span>
+                        </a>
+                    </li>
+
+                    <li v-for="(scenarioStats, index) in viewModel.FinalStats.ScenarioStats"
+                        :key="`nav-scenario-stats-${index}`"
+                        data-toggle="tooltip"
+                        data-placement="right"
+                        :title="scenarioStats.ScenarioName">
+
+                        <a data-toggle="pill"
+                           :href="`#scenario-${index}-view`"
+                           role="tab"
+                           :aria-controls="`scenario-${index}-view`"
+                           @click="selectView(`scenario-${index}`)">
+                            Scenario #{{index + 1}}
+                            <span class="sub-icon sub-icon-scenario fas fa-stack">
+                                <span class="far fa-circle fa-stack-1x"></span>
+                                <span class="fas fa-stack-1x stack-label">{{index + 1}}</span>
+                            </span>
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a data-toggle="pill" href="#plugins-stats-view" role="tab" aria-controls="plugins-stats-view"
+                           @click="selectView('plugins')"
+                           :class="{disabled: !viewModel.FinalStats.PluginStats || !viewModel.FinalStats.PluginStats.length}">
+                            Plugins <span class="sub-icon sub-icon-plugin fas fa-puzzle-piece"></span>
+                        </a>
+                    </li>
+
+                    <li class="nav-item">
+                        <a data-toggle="pill" href="#hints-view" role="tab" aria-controls="hints-view"
+                           @click="selectView('hints')"
+                           :class="{disabled: !viewModel.Hints || !viewModel.Hints.length}">
+                            Hints <span class="sub-icon sub-icon-plugin fas fa-exclamation-triangle"></span>
+                        </a>
+                    </li>
+                </ul>
+                <footer>
+                    <p class="blue-grey-text" v-cloak>
+                        <span>v{{viewModel.FinalStats.HostInfo.AutobahnVersion}}</span>
+                    </p>
+                </footer>
+            </div>
+        </div>
+
+        <!-- Content -->
+        <div id="page-content-wrapper" :class="{ active: !sideBarActive }">
+            <div class="container">
+
+                <div class="text-center" v-if="false">
+                    <div class="spinner-border" role="status">
+                        <span class="sr-only">Loading...</span>
+                    </div>
+                </div>
+
+                <div class="tab-content" v-cloak>
+                    <!-- Environment View -->
+                    <div class="tab-pane fade show" id="env-view" role="tabpanel">
+                        <div class="row">
+                            <div class="col">
+                                <host-info-table :host-info="viewModel.FinalStats.HostInfo"></host-info-table>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Test Suite View -->
+                    <div class="tab-pane fade show active" id="test-suite-view" role="tabpanel"
+                         v-if="viewModel.FinalStats.ScenarioStats && viewModel.FinalStats.PluginStats">
+
+                        <div class="row">
+                            <div class="col">
+                                <div class="card custom scenario">
+                                    <div class="card-header mdb-color darken-2 white-text">
+                                        <h6>test info</h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <table class="table table-hover table-sm table-cluster-info">
+                                            <thead class="mdb-color lighten-2 white-text">
+                                            <tr>
+                                                <th>session</th>
+                                                <th>test suite</th>
+                                                <th>test name</th>
+                                            </tr>
+                                            </thead>
+                                            <tbody>
+                                            <tr>
+                                                <td>{{viewModel.FinalStats.TestInfo.SessionId}}</td>
+                                                <td>{{viewModel.FinalStats.TestInfo.TestSuite}}</td>
+                                                <td>{{viewModel.FinalStats.TestInfo.TestName}}</td>
+                                            </tr>
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div v-for="(scenarioStats, scenarioIndex) in viewModel.FinalStats.ScenarioStats"
+                             :key="`test-suite-scenario-stats-${scenarioIndex}`"
+                             v-if="viewModel.FinalStats.ScenarioStats"
+                             class="row">
+                            <div class="col">
+                                <div class="card custom scenario">
+                                    <div class="card-header mdb-color darken-2 white-text">
+                                        <h6>
+                                            <a href="#" class="white-text"
+                                               data-toggle="collapse" :data-target="`#test-suite-scenario-content-${scenarioIndex}`"
+                                               aria-expanded="true" :aria-controls="`test-suite-scenario-content-${scenarioIndex}`">
+                                                <span class="fa fa-chevron-down float-right"></span>
+                                                <scenario-header :scenario-index="scenarioIndex" :scenario-name="scenarioStats.ScenarioName"></scenario-header>
+                                            </a>
+                                        </h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <div :id="`test-suite-scenario-content-${scenarioIndex}`" class="show">
+                                            <!-- TestSuite View / Stats Table -->
+                                            <div class="row">
+                                                <div class="col">
+                                                    <scenario-stats :scenario-stats="scenarioStats"></scenario-stats>
+                                                </div>
+                                            </div>
+                                            <div class="row d-none d-lg-block">
+                                                <div class="col">
+                                                    <scenario-stats-table :scenario-stats="scenarioStats" :fail-stats="false"></scenario-stats-table>
+                                                </div>
+                                            </div>
+                                            <div class="row d-none d-lg-block" v-if="isFailStatsExist(scenarioStats)">
+                                                <div class="col">
+                                                    <scenario-stats-table :scenario-stats="scenarioStats" :fail-stats="true"></scenario-stats-table>
+                                                </div>
+                                            </div>
+                                            <div class="row d-lg-none">
+                                                <div class="col">
+                                                    <scenario-stats-requests-number-table :scenario-stats="scenarioStats" :fail-stats="false"></scenario-stats-requests-number-table>
+                                                 </div>
+                                            </div>
+                                            <div class="row d-lg-none">
+                                                <div class="col">
+                                                    <scenario-stats-latency-table :scenario-stats="scenarioStats" :fail-stats="false"></scenario-stats-latency-table>
+                                                 </div>
+                                            </div>
+                                            <div class="row d-lg-none">
+                                                <div class="col">
+                                                    <scenario-stats-data-transfer-table :scenario-stats="scenarioStats" :fail-stats="false"></scenario-stats-data-transfer-table>
+                                                </div>
+                                            </div>
+                                            <div class="row d-lg-none" v-if="isFailStatsExist(scenarioStats)">
+                                                <div class="col">
+                                                    <scenario-stats-requests-number-table :scenario-stats="scenarioStats" :fail-stats="true"></scenario-stats-requests-number-table>
+                                                </div>
+                                            </div>
+                                            <div class="row d-lg-none" v-if="isFailStatsExist(scenarioStats)">
+                                                <div class="col">
+                                                    <scenario-stats-latency-table :scenario-stats="scenarioStats" :fail-stats="true"></scenario-stats-latency-table>
+                                                </div>
+                                            </div>
+                                            <div class="row d-lg-none" v-if="isFailStatsExist(scenarioStats)">
+                                                <div class="col">
+                                                    <scenario-stats-data-transfer-table :scenario-stats="scenarioStats" :fail-stats="true"></scenario-stats-data-transfer-table>
+                                                </div>
+                                            </div>
+                                            <div class="row">
+                                                <div class="col">
+                                                    <!-- TestSuite View / Status Codes Table -->
+                                                    <status-codes :step-stats="scenarioStats.StepStats.find(x => x.StepName === 'global information')"
+                                                                  :all-request-count="scenarioStats.AllRequestCount"
+                                                                  :show-charts="showCharts">                                                        
+                                                    </status-codes>
+                                                </div>
+                                            </div>
+                                            <div v-show="showCharts">
+                                                <div class="row">
+                                                    <div class="col-xl-8 col-lg-8 col-md-12">
+                                                        <!-- TestSuite View / Scenario Latency (Columns) -->
+                                                        <chart-scenario-latency-indicators :scenario-stats="scenarioStats"></chart-scenario-latency-indicators>
+                                                    </div>
+                                                    <div class="col-xl-4 col-lg-4 col-md-12">
+                                                        <!-- TestSuite View / Scenario Requests -->
+                                                        <chart-scenario-requests :scenario-stats="scenarioStats"></chart-scenario-requests>
+                                                    </div>
+                                                </div>
+
+                                                <div class="row">
+                                                    <div class="col">
+                                                        <!-- TestSuite View / Scenario Latency -->
+                                                        <chart-scenario-latency-distribution :time-line-history="viewModel.TimeLineHistory"
+                                                                                             :scenario-name="scenarioStats.ScenarioName">
+                                                        </chart-scenario-latency-distribution>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row">
+                            <div class="col">
+                                <plugins-stats-table :plugins-stats="viewModel.FinalStats.PluginStats"></plugins-stats-table>
+                            </div>
+                        </div>
+
+                        <div class="row" v-if="viewModel.Hints && viewModel.Hints.length">
+                            <div class="col">
+                                <!-- TestSuite View / Hints Table -->
+                                <hints-table :hints="viewModel.Hints"></hints-table>
+                            </div>
+                        </div>
+                    </div>
+                    <no-data v-else></no-data>
+                    <!-- Scenarios Views -->
+                    <div v-for="(scenarioStats, scenarioIndex) in viewModel.FinalStats.ScenarioStats" :key="`scenario-stats-${scenarioIndex}`"
+                         class="tab-pane fade show"
+                         :id="`scenario-${scenarioIndex}-view`"
+                         role="tabpanel">
+
+                        <!-- Scenario Stats -->
+                        <div class="row">
+                            <div class="col">
+                                <div class="card custom scenario">
+                                    <div class="card-header mdb-color darken-2 white-text">
+                                        <h6>
+                                            <scenario-header :scenario-index="scenarioIndex" :scenario-name="scenarioStats.ScenarioName"></scenario-header>
+                                        </h6>
+                                    </div>
+                                    <div class="card-body">
+                                        <!-- Scenario View / Stats Table -->
+                                        <div class="row">
+                                            <div class="col">
+                                                <scenario-stats :scenario-stats="scenarioStats"></scenario-stats>
+                                            </div>
+                                        </div>
+                                        <div class="row d-none d-lg-block">
+                                            <div class="col">
+                                                <scenario-stats-table :scenario-stats="scenarioStats" :fail-stats="false"></scenario-stats-table>
+                                            </div>
+                                        </div>
+                                        <div class="row d-none d-lg-block" v-if="isFailStatsExist(scenarioStats)">
+                                            <div class="col">
+                                                <scenario-stats-table :scenario-stats="scenarioStats" :fail-stats="true"></scenario-stats-table>
+                                            </div>
+                                        </div>
+                                        <div class="row d-lg-none">
+                                            <div class="col">
+                                                <scenario-stats-requests-number-table :scenario-stats="scenarioStats" :fail-stats="false"></scenario-stats-requests-number-table>
+                                            </div>
+                                        </div>
+                                        <div class="row d-lg-none">
+                                            <div class="col">
+                                                <scenario-stats-latency-table :scenario-stats="scenarioStats" :fail-stats="false"></scenario-stats-latency-table>
+                                            </div>
+                                        </div>
+                                        <div class="row d-lg-none">
+                                            <div class="col">
+                                                <scenario-stats-data-transfer-table :scenario-stats="scenarioStats" :fail-stats="false"></scenario-stats-data-transfer-table>
+                                            </div>
+                                        </div>
+                                        <div class="row d-lg-none" v-if="isFailStatsExist(scenarioStats)">
+                                            <div class="col">
+                                                <scenario-stats-requests-number-table :scenario-stats="scenarioStats" :fail-stats="true"></scenario-stats-requests-number-table>
+                                            </div>
+                                        </div>
+                                        <div class="row d-lg-none" v-if="isFailStatsExist(scenarioStats)">
+                                            <div class="col">
+                                                <scenario-stats-latency-table :scenario-stats="scenarioStats" :fail-stats="true"></scenario-stats-latency-table>
+                                            </div>
+                                        </div>
+                                        <div class="row d-lg-none" v-if="isFailStatsExist(scenarioStats)">
+                                            <div class="col">
+                                                <scenario-stats-data-transfer-table :scenario-stats="scenarioStats" :fail-stats="true"></scenario-stats-data-transfer-table>
+                                            </div>
+                                        </div>
+                                        <div class="row">
+                                            <div class="col">
+                                                <!-- Scenario View / Status Codes Table -->
+                                                <status-codes :step-stats="scenarioStats.StepStats.find(x => x.StepName === 'global information')"
+                                                              :all-request-count="scenarioStats.AllRequestCount"
+                                                              :show-charts="showCharts">                                                    
+                                                </status-codes>
+                                            </div>
+                                        </div>
+                                        <lazy-load :loaded-views="loadedViews" :load-for-view="`scenario-${scenarioIndex}`">
+                                            <div class="row">
+                                                <div class="col-xl-8 col-lg-8 col-md-12">
+                                                    <!-- Scenario View / Scenario Latency (Column) -->
+                                                    <chart-scenario-latency-indicators :scenario-stats="scenarioStats"></chart-scenario-latency-indicators>
+                                                </div>
+                                                <div class="col-xl-4 col-lg-4 col-md-12">
+                                                    <!-- Scenario View / Scenario Requests -->
+                                                    <chart-scenario-requests :scenario-stats="scenarioStats"></chart-scenario-requests>
+                                                </div>
+                                            </div>
+                                        </lazy-load>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Step Stats -->
+                        <div class="row">
+                            <div class="col-2">
+                                <div class="sticky-wrapper">
+                                    <div class="card custom steps sticky">
+                                        <div class="card-header mdb-color darken-2 white-text">
+                                            <h6>steps</h6>
+                                        </div>
+                                        <div class="card-body">
+                                            <div class="nav flex-column nav-step-stats" role="tablist" aria-orientation="vertical">
+                                                <a v-for="(stepStats, stepIndex) in scenarioStats.StepStats"
+                                                   :key="`scenario-stats-${scenarioIndex}-step-stats-${stepIndex}-link`"
+                                                   :class="{'nav-link': true, active: stepIndex === 0}"
+                                                   data-toggle="pill"
+                                                   :href="`#scenario-${scenarioIndex}-view-step-${stepIndex}`"
+                                                   role="tab"
+                                                   :aria-controls="`#scenario-${scenarioIndex}-view-step-${stepIndex}`"
+                                                   aria-selected="false"
+                                                   data-placement="right"
+                                                   :title="stepStats.StepName"
+                                                   @click="selectView(`scenario-${scenarioIndex}-step-${stepIndex}`)">
+                                                    {{stepStats.StepName}}
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="col-10">
+                                <div class="tab-content">
+
+                                    <div v-for="(stepStats, stepIndex) in scenarioStats.StepStats"
+                                         :key="`scenario-stats-${scenarioIndex}-step-stats-${stepIndex}-tab`"
+                                         :class="{ 'tab-pane': true, fade: true, show: stepIndex === 0, active: stepIndex === 0 }"
+                                         :id="`scenario-${scenarioIndex}-view-step-${stepIndex}`"
+                                         role="tabpanel"
+                                         :aria-labelledby="`scenario-${scenarioIndex}-view-step-${stepIndex}`">
+
+                                        <div class="card custom step">
+                                            <div class="card-header mdb-color darken-2 white-text">
+                                                <h6>{{stepStats.StepName}}</h6>
+                                            </div>
+                                            <div class="card-body">
+                                                <div class="row">
+                                                    <div class="col">
+                                                        <!-- Step View / Status Codes Table -->
+                                                        <status-codes :step-stats="stepStats" 
+                                                                      :all-request-count="stepStats.StepName === 'global information' ? scenarioStats.AllRequestCount : stepStats.Ok.Request.Count + stepStats.Fail.Request.Count"
+                                                                      :show-charts="showCharts">                                                            
+                                                        </status-codes>
+                                                    </div>
+                                                </div>
+                                                <lazy-load :loaded-views="loadedViews"
+                                                           :load-for-view="stepIndex === 0 ? `scenario-${scenarioIndex}` : `scenario-${scenarioIndex}-step-${stepIndex}`">
+                                                    <!-- Step View / Step Throughput -->
+                                                    <chart-timeline-step-throughput :time-line-history="viewModel.TimeLineHistory"
+                                                                                    :scenario-name="scenarioStats.ScenarioName"
+                                                                                    :step-name="stepStats.StepName">
+                                                    </chart-timeline-step-throughput>
+
+                                                    <!-- Step View / Step Latency -->
+                                                    <chart-timeline-step-latency :time-line-history="viewModel.TimeLineHistory"
+                                                                                 :scenario-name="scenarioStats.ScenarioName"
+                                                                                 :step-name="stepStats.StepName">
+                                                    </chart-timeline-step-latency>
+
+                                                    <!-- Step View / Step Data Transfer -->
+                                                    <chart-timeline-step-data-transfer :time-line-history="viewModel.TimeLineHistory"
+                                                                                       :scenario-name="scenarioStats.ScenarioName"
+                                                                                       :step-name="stepStats.StepName">
+                                                    </chart-timeline-step-data-transfer>
+                                                </lazy-load>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Plugins Stats Views -->
+                    <div class="tab-pane fade show" id="plugins-stats-view" role="tabpanel"
+                         v-if="viewModel.FinalStats.PluginStats && viewModel.FinalStats.PluginStats.length > 0">
+                        <div class="row">
+                            <div class="col">
+                                <plugins-stats-table :plugins-stats="viewModel.FinalStats.PluginStats"></plugins-stats-table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Hints Views -->
+                    <div class="tab-pane fade show" id="hints-view" role="tabpanel"
+                         v-if="viewModel.Hints && viewModel.Hints.length > 0">
+                        <div class="row" v-if="viewModel.Hints && viewModel.Hints.length">
+                            <div class="col">
+                                <hints-table :hints="viewModel.Hints"></hints-table>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.5.1/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.4/umd/popper.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/4.5.0/js/bootstrap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mdbootstrap/4.19.1/js/mdb.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.6.11"></script>
+    <script type="text/javascript" src="https://www.gstatic.com/charts/loader.js"></script>
+
+    <script src="assets/js/index.js"></script> <!-- include asset -->
+
+    <script>
+        // The run result, embedded by Autobahn when it writes this file.
+        // <!-- include view model -->
+        initApp('#app', viewModel);
+    </script>
+
+</body>
+</html>

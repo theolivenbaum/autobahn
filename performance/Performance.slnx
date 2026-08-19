@@ -1,4 +1,0 @@
-<Solution>
-  <Project Path="NBomber.Benchmarks/NBomber.Benchmarks.fsproj" />
-  <Project Path="NBomber.CSharpImpl/NBomber.CSharpImpl.csproj" />
-</Solution>

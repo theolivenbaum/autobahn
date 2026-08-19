@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Wire DTOs shared by the CLI host and the Tesserae web UI.
+
+         netstandard2.0 is a framework constraint, not a language one: Tesserae and the
+         Transpose compiler build against netstandard2.0, so a project the UI references
+         has to target it too. LangVersion stays at latest - records, init-only setters
+         and file-scoped namespaces are all available. See TODO.md, section 8.
+
+         Not in the root solution yet; the UI is a later milestone. -->
+
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <RootNamespace>Autobahn.Ui.Contracts</RootNamespace>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+</Project>
