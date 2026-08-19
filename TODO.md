@@ -1,59 +1,158 @@
 # Autobahn — Roadmap
 
-This is the plan of record for Autobahn. It has two halves:
+This is the plan of record for Autobahn. It has three parts:
 
+0. **The foundation** — turning the fork point into what Autobahn is meant to be: a pure
+   C# library on .NET 10, with clustering removed.
 1. **Catch-up work** — capabilities, fixes and improvements that appeared in the upstream
    project between the 4.1.2 fork point and its current development line, captured here as
-   *behaviour to build*, plus fork-specific housekeeping.
+   *behaviour to build*.
 2. **The Autobahn UI** — a Tesserae-based web interface hosted by the CLI over Kestrel.
    This is new work with no upstream equivalent.
 
-### How to read the catch-up half
+### The three directional decisions
 
-Everything below describes **what a capability does and why it matters**, at the level you
-would find in release notes or documentation. It deliberately contains no upstream
+Everything in this document assumes these, and they are not up for re-litigation item by
+item:
+
+- **Autobahn is a pure C# library.** All F# in the engine is rewritten in C#. The public
+  API stops being two surfaces (one F#-idiomatic, one C#-friendly) and becomes one.
+- **Autobahn targets .NET 10.** Not `netstandard2.0`, not multi-targeting.
+- **Clustering is removed.** Not deprecated, not left dormant — removed.
+
+### How to read the catch-up part
+
+Everything in part 1 describes **what a capability does and why it matters**, at the level
+you would find in release notes or documentation. It deliberately contains no upstream
 implementation detail, no APIs copied verbatim, and no source. Upstream releases after
-4.1.2 are not under a license this project can draw from, so every item here is a
-specification to be designed and implemented independently, not a port.
+4.1.2 are not under a license this project can draw from, so every item is a specification
+to be designed and implemented independently.
+
+Sequencing: catch-up items that touch engine internals are cheaper *after* the file they
+live in has been ported, and painful before — a feature added to an F# file is a feature
+that has to be ported twice. Items that only add new code (a new sink, a new protocol
+helper) can start immediately, in C#.
 
 ### Explicitly out of scope
 
 **Clustering.** Coordinators, agents, distributed execution, cluster autoscaling, cluster
-monitoring and everything that hangs off them are not part of Autobahn and are not listed
-below. Autobahn is a single-process load generator. Where the 4.1.2 code still has
-cluster-shaped seams, they are legacy and should be removed rather than extended.
+monitoring and everything that hangs off them are not part of Autobahn and appear nowhere
+in the feature lists below. Autobahn is a single-process load generator. Removing the
+cluster code that came with the fork point is a work item — see section 0.
 
 ---
 
-## 0. Fork housekeeping
+## 0. Foundation: the C# port, .NET 10, de-clustering
 
-These come first because most of the rest depends on them.
+This section is the prerequisite for most of the rest. The order within it matters.
 
-- [ ] **Vendor the contracts.** The engine depends on an external, version-pinned contracts
-  package that this fork does not control and cannot evolve. Bring the contract types
-  (scenario context, response, stats records, sink and plugin interfaces, node/test info)
-  into the repository as a source project so the public surface can change. This blocks
-  almost every feature item below.
+### 0.1 Remove clustering — do this first
+
+Cheapest when done before anything else, because every seam removed is code that never has
+to be ported, tested or reasoned about again.
+
+- [ ] **Delete the cluster seams in the engine.** The agent-stats intake on the stats actor,
+  the per-scenario cluster-count lookup in the test host, the coordinator/agent node types
+  and the operation states that only exist for them.
+- [ ] **Simplify the stats pipeline to single-node.** The merge-shaped paths in the stats
+  actor and statistics module exist to combine results across nodes. With one node they are
+  pure overhead on the hot path and pure complexity in the port. Collapse them.
+- [ ] **Strip cluster configuration.** Cluster sections in the JSON config model, the
+  matching CLI arguments, and their validation.
+- [ ] **Purge the vocabulary.** Node/coordinator/agent naming in types, stats records,
+  reports and log messages, where it exists only because of clustering. Some of it is
+  legitimately about "the machine this ran on" — keep that, rename the rest.
+- [ ] **Prove the removal.** The full test suite passes with the cluster code gone, and no
+  public type refers to it. Anything that cannot be removed without breaking single-node
+  behaviour gets a comment saying why it survived.
+
+### 0.2 Vendor the contracts
+
+- [ ] **Bring the contract types into the repository as C# source.** The engine currently
+  depends on an external, version-pinned, F# contracts package that this fork neither
+  controls nor can evolve — it blocks the rename, the C# port and nearly every feature
+  item below. Reimplement the contract surface (scenario context, response, stats records,
+  sink and plugin interfaces, run/test info) as a C# project in this repository, matching
+  the existing behaviour so the engine keeps working while the port proceeds.
+
+### 0.3 Rewrite the engine in C#
+
+The bulk of the work. Port file by file, bottom-up, keeping the suite green throughout.
+
+- [ ] **Agree the C# shape for the F# constructs that carry the design**, before porting the
+  files that use them, so the port does not fork into two conventions:
+  - Discriminated unions (load simulations, scheduler commands, actor messages, errors) →
+    sealed hierarchies or tagged records. Exhaustiveness stops being a compiler guarantee,
+    so it becomes a test.
+  - `Result`/`taskResult` validation pipelines → a small result type owned by this
+    repository, with no F# dependency.
+  - Structural equality and immutable records → C# `record` types.
+  - `inline` hot-path helpers → aggressive inlining where a benchmark justifies it, plain
+    methods otherwise. Don't guess; the benchmarks exist.
+- [ ] **Port order, roughly bottom-up so each layer lands on ported foundations:**
+  1. Constants, configuration model, extensions/utilities.
+  2. Errors and domain types.
+  3. Load simulation validation and expansion.
+  4. Statistics, raw measurement stats, the stats actor.
+  5. Scenario, step, scenario context.
+  6. The actor and actor pool.
+  7. The three schedulers.
+  8. Reports and the reporting manager.
+  9. Test host, session runner, context merging.
+  10. The public API — collapsing the F#/C#/shared triple into one surface.
+  11. Plugins, then the examples.
+- [ ] **Behaviour parity is the acceptance criterion.** Each ported file lands with its
+  existing tests passing unchanged. Where a test had to change, the change is justified in
+  the commit message — a silent behaviour change inside a translation is nearly impossible
+  to find afterwards.
+- [ ] **Guard the hot paths with benchmarks.** The scheduler and stats paths have
+  BenchmarkDotNet projects. Record numbers before each port and compare after: the C#
+  version should be at least as fast, and where it is not, that is a bug to fix rather than
+  a cost to accept. Naive translations of F# structural sharing and closures can allocate
+  badly.
+- [ ] **Port the tests to C#** as their subjects land, keeping property-based coverage where
+  it earns its keep.
+- [ ] **Delete the F# projects and the FSharp.Core dependency** once nothing references
+  them. The port is not finished while a consumer still needs `FSharp.Core` in their
+  project to call the API.
+
+### 0.4 Move to .NET 10
+
+- [ ] **Retarget everything to .NET 10** — engine, tests, examples, benchmarks — and drop
+  `netstandard2.0`. Single target framework.
+- [ ] **Use what that unlocks**, deliberately and where it pays: spans and `Memory<T>` on
+  the measurement path, `ValueTask` for hot paths that usually complete synchronously,
+  `System.Threading.Channels` for the actor mailboxes, `TimeProvider` so tests can control
+  time instead of sleeping, `System.Text.Json` source generation for config and the run
+  artifact, and the current `System.Diagnostics.Metrics` primitives as the substrate for
+  section 1 rather than a hand-rolled equivalent.
+- [ ] **Set runtime configuration properly** in the shipped projects — server GC and
+  concurrent GC — and make sure examples inherit sane settings rather than each redefining
+  them.
+- [ ] **Confirm the thread-pool story.** A load generator's own scheduling is its most
+  common self-inflicted bottleneck; document what Autobahn assumes and what it configures.
+
+### 0.5 Repository and release
+
 - [ ] **Rename to Autobahn.** Namespaces, assembly, package id, entry-point types, config
-  file names and environment variables. Ship a compatibility shim package or type aliases
+  file names and environment variables. Do it as part of the port rather than as a separate
+  sweep — the files are being rewritten anyway. Ship a compatibility shim or type aliases
   for one release so an existing test suite can move over by changing a `using`.
 - [ ] **Package identity and metadata.** Authors, description, repository URL, icon, tags,
   license expression (`Apache-2.0`), release notes, symbols and deterministic builds.
 - [ ] **Replace the legacy build script.** The inherited Cake pipeline clones upstream
   plugin repositories and references projects that do not exist here. Replace with a plain
   `dotnet build` / `dotnet pack` pipeline plus a small script for the release steps.
-- [ ] **CI.** Build and test on push and PR to `main`; matrix over supported .NET versions;
-  publish on tag rather than on every push to `main`.
-- [ ] **Modernise the target framework story.** Keep `netstandard2.0` for the widest reach
-  or move to current LTS — decide deliberately and document it. Enable server GC and
-  concurrent GC in the shipped projects, and make sure the examples inherit sane settings.
-- [ ] **Dependency sweep.** Audit and update transitive dependencies, remove packages the
-  engine no longer needs, and add automated vulnerability scanning to CI.
-- [ ] **Repository hygiene.** Migrate the solution to the newer solution format, adopt
-  file-scoped namespaces across the C# examples, and add an `.editorconfig`-driven format
-  check to CI.
+- [ ] **CI.** Build and test on push and PR to `main`; publish on tag rather than on every
+  push to `main`. One target framework means no matrix — keep it that way.
+- [ ] **Dependency sweep.** Audit and update dependencies, drop packages the C# engine no
+  longer needs (several exist only to make F# ergonomic), and add automated vulnerability
+  scanning to CI.
+- [ ] **Repository hygiene.** Newer solution format, file-scoped namespaces, nullable
+  reference types enabled solution-wide, `Directory.Build.props` for shared settings, and
+  an `.editorconfig`-driven format check in CI.
 - [ ] **Keep and extend the test suite.** The upstream development line dropped its
-  integration tests. Autobahn keeps them, and every item below lands with tests.
+  integration tests. Autobahn keeps them, ports them, and every item below lands with tests.
 
 ---
 
@@ -260,13 +359,22 @@ to static assets that can be embedded in the CLI assembly and served with no net
 
 Three new projects:
 
-- **`Autobahn.Ui.Contracts`** — `netstandard2.0`, no dependencies. The wire DTOs: run
-  descriptor, scenario/step snapshots, interval frames, metric series, threshold states, log
-  entries, control commands. Referenced by both the host and the UI, so the wire format is
-  checked by the compiler on both ends and cannot drift.
-- **`Autobahn.Ui`** — the Tesserae app. Compiled to JS/CSS/HTML at build time; the output is
-  embedded into the CLI assembly as resources.
-- **`Autobahn.Cli`** — a dotnet tool that runs a test and hosts the UI.
+- **`Autobahn.Ui.Contracts`** — the wire DTOs: run descriptor, scenario/step snapshots,
+  interval frames, metric series, threshold states, log entries, control commands.
+  Referenced by both the host and the UI, so the wire format is checked by the compiler on
+  both ends and cannot drift.
+
+  **This one project is the deliberate exception to the .NET 10 rule.** Tesserae and the
+  Transpose compiler build against `netstandard2.0` with an older language level, so a
+  project the UI references has to meet them there: plain DTOs, no records with modern
+  syntax, no generic-math or span-flavoured APIs, no source generators. Either target
+  `netstandard2.0` alone or multi-target it with .NET 10, and keep the types dull on
+  purpose — this is a schema, not a place for clever C#. Everything else in the repository
+  is .NET 10 only.
+- **`Autobahn.Ui`** — the Tesserae app, C# compiled to JS/CSS/HTML by Transpose at build
+  time; the output is embedded into the CLI assembly as resources. Also `netstandard2.0`,
+  for the same reason.
+- **`Autobahn.Cli`** — .NET 10. A dotnet tool that runs a test and hosts the UI.
 
 ### Hosting
 

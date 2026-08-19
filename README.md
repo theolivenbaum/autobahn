@@ -1,8 +1,8 @@
 # Autobahn
 
-**Autobahn** is a load-testing framework for .NET. You write your load test as ordinary
-C# or F# — no DSL to learn — and Autobahn runs it, schedules the load, measures every
-step, and reports what happened.
+**Autobahn** is a load-testing library for .NET 10, written in pure C#. You write your
+load test as ordinary C# — no DSL to learn — and Autobahn runs it, schedules the load,
+measures every step, and reports what happened.
 
 It is protocol-agnostic (HTTP, WebSockets, gRPC, AMQP, MQTT, SQL, Redis, anything you can
 call from .NET) and model-agnostic (pull or push). If you can write the call, you can load
@@ -16,9 +16,14 @@ test it.
 
 ## Status
 
-Early. The code currently in this repository is the 4.1.2 fork point, largely unmodified.
-The rename, the ergonomics work and the feature roadmap are tracked in
-[TODO.md](TODO.md), which is the plan of record for where this goes next.
+Early, and mid-transition. The code currently in this repository is the 4.1.2 fork point:
+F#, targeting `netstandard2.0`, largely unmodified. Autobahn is being rewritten from that
+starting point into a **pure C# library on .NET 10** — every F# file in the engine gets
+ported, and the F#-specific parts of the public API go away. Clustering is being removed
+outright.
+
+The port, the rename, and the feature roadmap are tracked in [TODO.md](TODO.md), which is
+the plan of record. Expect the API to move until the port lands.
 
 ## Why a fork
 
@@ -27,8 +32,14 @@ version of it that is free software. Autobahn keeps that engine open under Apach
 takes it in its own direction:
 
 - **Open, permanently.** Apache-2.0, no paid tiers, no feature gates, no license server.
-- **Focused on the single-node engine.** Distributed/cluster execution is explicitly out
-  of scope — see [TODO.md](TODO.md).
+- **Pure C#, current .NET.** One language across the engine, the API, the tests and the
+  UI, on .NET 10. The original engine is F#; every line of it is being ported. That is a
+  large, deliberate cost, paid once, so that the people most likely to contribute to a
+  .NET load-testing tool can read and change every part of it — and so the engine can use
+  what modern .NET actually offers.
+- **Focused on the single-node engine.** Distributed/cluster execution is out of scope,
+  and the cluster code inherited from the fork point is being removed rather than left to
+  rot — see [TODO.md](TODO.md).
 - **A real UI.** A first-class live web interface served by the CLI, not just a console
   table and a static HTML file at the end.
 - **Batteries in the box.** Metrics, thresholds, and the common reporting sinks are part
@@ -58,8 +69,9 @@ NBomberRunner
     .Run();
 ```
 
-> The public namespaces are still `NBomber.*` at the fork point. Renaming the surface to
-> `Autobahn.*` is the first item on the roadmap.
+> The public namespaces are still `NBomber.*` at the fork point, and `NBomber.CSharp` is
+> the C#-facing half of an API that also has an F# half. After the port there is one
+> surface, under `Autobahn.*`.
 
 ## Core concepts
 
@@ -95,7 +107,8 @@ users.
 
 ## Building
 
-Requires the .NET SDK (see [global.json](global.json)).
+The target is the .NET 10 SDK. Until the port completes, the tree still builds as the
+F# solution it was forked as (see [global.json](global.json)).
 
 ```bash
 dotnet restore NBomber.sln
@@ -106,9 +119,9 @@ dotnet test tests/NBomber.IntegrationTests/NBomber.IntegrationTests.fsproj --fil
 ## Repository layout
 
 ```
-src/NBomber/          the engine (F#)
-tests/                integration tests (F#, xUnit)
-examples/             runnable C# and F# examples
+src/NBomber/          the engine — F# today, being ported to C#
+tests/                integration tests
+examples/             runnable examples
 performance/          benchmarks
 assets/               images
 ```

@@ -4,10 +4,22 @@ Guidance for working in this repository.
 
 ## What this repository is
 
-**Autobahn** is a load-testing framework for .NET: a hard fork of
+**Autobahn** is a load-testing library for .NET: a hard fork of
 [NBomber](https://github.com/PragmaticFlow/NBomber) at version **4.1.2**, the last release
-published under Apache-2.0. The engine is F# targeting `netstandard2.0`, with a C#-first
-public API surface layered on top.
+published under Apache-2.0.
+
+**The target is a pure C# library on .NET 10.** The code you will find in the tree today is
+still the fork point: F#, targeting `netstandard2.0`, with a C#-friendly API layered over an
+F#-idiomatic one. That is the starting state, not the destination. Three directional
+decisions govern everything below:
+
+1. **Pure C#.** Every F# file in the engine gets rewritten in C#. No new F# is added.
+2. **.NET 10.** Not `netstandard2.0`, not multi-targeting. Use what the current runtime
+   offers rather than working around a decade-old floor. The one planned exception is the
+   web UI's projects, which have to meet the Transpose compiler at `netstandard2.0` — see
+   TODO.md.
+3. **No clustering.** The cluster code inherited from the fork point is removed, not
+   preserved.
 
 [TODO.md](TODO.md) is the roadmap and the plan of record. [README.md](README.md) is the
 user-facing introduction.
@@ -26,12 +38,22 @@ branch.
 ### Out of scope
 
 **Clustering** — coordinators, agents, distributed test execution, cluster monitoring — is
-not part of Autobahn. Do not add it, and do not carry cluster-shaped abstractions into new
-code. Some cluster seams still exist in the 4.1.2 code (`AddFromAgent` on the stats actor,
-`getScenarioClusterCount` in the test host, coordinator/agent node types); leave them alone
-unless you are deliberately removing them, and never build on them.
+not part of Autobahn, and the seams the fork point left behind are being deleted rather
+than kept dormant: `AddFromAgent` on the stats actor, `getScenarioClusterCount` in the test
+host, the coordinator/agent node types, and the stats-merging paths that exist only to
+combine results from several nodes.
+
+Deleting them is not tidiness for its own sake. They force the stats pipeline to be
+merge-shaped when it only ever merges one node's results, and porting that shape to C#
+would carry the complexity forward for no user. When you touch a file that still has a
+cluster seam, take the seam out. Never build on one, and do not reintroduce the concept
+under another name ("nodes", "workers", "shards") — if distributed execution ever comes
+back, it will be designed fresh.
 
 ## Build and test
+
+Use the .NET 10 SDK. Until the port completes, the tree still builds as the F# solution it
+was forked as:
 
 ```bash
 dotnet restore NBomber.sln
@@ -49,6 +71,11 @@ PragmaticFlow plugin repositories and a `src/NBomber.Contracts` project that doe
 here; it is not part of the working build and will be replaced (see TODO.md).
 
 ## Architecture
+
+The layout below is the fork point's. The port to C# keeps this shape — the layering is
+sound and is the reason the engine is portable at all — but renames files to `.cs`, and the
+`Api/FSharp.fs` / `Api/CSharp.fs` split collapses into one surface. Read it as the map of
+what exists and what the C# version is expected to look like.
 
 The dependency direction is strictly one way: **Api → DomainServices → Domain → Extensions/Infra**.
 
@@ -112,18 +139,20 @@ then builds the final `NodeStats` at the end.
 
 ### Things that will bite you
 
-- **`NBomber.fsproj` compile order is load-bearing.** F# resolves top to bottom. A new file
-  must be added to the `<Compile Include>` list in the right position or the build fails in
-  a confusing place. Adding a file and forgetting the fsproj entry silently excludes it.
+- **`NBomber.fsproj` compile order is load-bearing** *while the engine is still F#*. F#
+  resolves top to bottom: a new file must go into the `<Compile Include>` list in the right
+  position or the build fails somewhere confusing, and a file added without an fsproj entry
+  is silently excluded. This trap disappears with the last F# file — one of the smaller
+  reasons the port is worth doing.
 - **`NBomber.Contracts` is an external NuGet package** pinned to `[4.1.1]`, not source in
   this repo, even though `src/NBomber/Contracts.fs` also exists (that file holds the
   runner-side context types; the package holds `IScenarioContext`, `Response`, the stats
-  records). Vendoring it into the fork is a roadmap item and a prerequisite for the
-  namespace rename.
+  records). It is an F# assembly this fork does not control, so it blocks both the C# port
+  and the rename. Vendoring it is the first roadmap item for a reason.
 - **The public API exists three times.** `Api/Shared.fs` (common), `Api/FSharp.fs` (F#
   idiomatic), `Api/CSharp.fs` (C#-friendly overloads, `[<Extension>]` methods,
-  `ParamArray`). A new user-facing capability needs all the relevant ones or it is missing
-  for half the users.
+  `ParamArray`). Until the port collapses this into one C# surface, a user-facing change
+  needs all the relevant ones or it is missing for half the users.
 - **Timing is measured in ticks and time buckets**, not `DateTime`. Don't reintroduce
   wall-clock arithmetic on the hot path.
 - **The console live table and the reports read the same stats records.** Changing a stats
@@ -131,21 +160,51 @@ then builds the final `NodeStats` at the end.
 
 ## Conventions
 
-- F# style follows the existing code: `module internal` for engine internals, records over
-  classes, `inline` on hot-path helpers, `Result`/`taskResult` (FsToolkit) for anything
-  that validates.
-- Keep tunables in `Constants.fs` rather than inlining magic numbers.
-- New user-facing errors go through `Domain/Errors.fs` so the message formatting stays in
+**New code is C#.** Write C# even when the file next to it is F#, unless you are editing an
+existing F# file in place. Do not add F# files. Do not add F#-only constructs to the public
+surface: no F# functions, options, discriminated unions or records where a C# caller has to
+reference `FSharp.Core` to use them.
+
+C# style for the ported engine:
+
+- `internal` by default; public is a deliberate decision about the supported surface.
+- Records and `readonly struct` for data that does not mutate; classes where identity or
+  mutation is the point (the actors, the schedulers, the stats state).
+- `async`/`await` with `ValueTask` where a hot path usually completes synchronously.
+- Nullable reference types enabled, and honestly annotated — not blanket `!`.
+- Validation returns a result type rather than throwing. The F# code uses `Result`/
+  `taskResult` from FsToolkit; the C# version needs one small result type of its own, not a
+  dependency on an F# library.
+- File-scoped namespaces, one type per file, folder structure mirroring the namespace.
+
+Rules that survive the language change:
+
+- Keep tunables in `Constants` rather than inlining magic numbers.
+- New user-facing errors go through the errors module so the message formatting stays in
   one place; include the scenario name in anything scenario-scoped.
-- Public API additions need an example under `examples/` and coverage under
-  `tests/NBomber.IntegrationTests/`.
+- Public API additions need an example under `examples/` and coverage under `tests/`.
 - Prefer strong typing. `obj`/boxing on the measurement path is a performance decision, not
   a style one — don't add more of it.
 
+### Porting an F# file
+
+- Port a whole file at a time and keep its tests green across the change. A half-ported
+  module that has to interop both ways is worse than either end state.
+- Behaviour first, idiom second: get the C# passing the existing tests, then make it read
+  like C#. Do not "improve" semantics during a port — a behaviour change hidden inside a
+  translation is nearly impossible to find later.
+- Where the F# leans on a language feature C# lacks (structural equality, exhaustive
+  matching over a DU), pick the C# shape deliberately and write down why in a comment. A
+  DU over load simulations, for instance, is a sealed hierarchy or a discriminated record
+  with an enum tag — and the exhaustiveness the compiler used to guarantee now has to come
+  from tests.
+- Take out cluster seams as you pass them (see **Out of scope**).
+
 ## Testing
 
-`tests/NBomber.IntegrationTests` is xUnit + FsCheck + Unquote, and most tests really do
-run short load tests in-process. That makes them slow and slightly timing-sensitive:
+`tests/NBomber.IntegrationTests` is xUnit + FsCheck + Unquote today; ported tests are C#
+xUnit, with FsCheck's C# API or another property-based library where a property test earns
+its keep. Most tests really do run short load tests in-process. That makes them slow and slightly timing-sensitive:
 assert on invariants (ordering, ratios, "at least N") rather than exact counts, and mark
 anything that needs more than a few seconds or an external service with the `CI=disable`
 trait.
