@@ -92,8 +92,17 @@ Not in the root build:
 **CI** is `.github/workflows/ci.yml`: build, tests, the examples, the web UI, `dotnet
 format --verify-no-changes`, a vulnerable-package check and a pack. A pull request gets the
 fast test subset and `main` gets the whole suite, because a slow gate is a gate people learn
-to ignore. Publishing is `release.yml` and fires on a `v*` tag only - the inherited workflow
-published on a push to main, under a package identity this fork does not own.
+to ignore. It never pushes a package.
+
+**Publishing** is `.devops/build-nuget.yml`, an Azure DevOps pipeline on a push to `main`, and
+it is the only thing that publishes. The version is CalVer computed in the pipeline -
+`yy.M.<build id mod 65536>`, the scheme the other packages from this organisation use - so no
+release version is committed anywhere; the `VersionPrefix` in `Directory.Build.props` is the
+local-build default and the pipeline's `/p:Version` overrides it. The push goes through the
+`nuget-curiosity-org` service connection, so no API key lives in this repository. The pipeline
+builds and stages the web UI before the solution, because the CLI embeds it, and runs the whole
+test suite rather than the fast subset: a slow gate gets ignored, but a package published
+without the slow tests cannot be un-published.
 
 ## Architecture
 

@@ -1,0 +1,110 @@
+# Builds Autobahn and publishes every package in it to NuGet.
+#
+# This is the only thing that publishes. The GitHub Actions workflow (.github/workflows/ci.yml)
+# is the gate on a pull request and on main - it builds, tests and packs, but it never pushes,
+# so a merge cannot release anything by itself.
+#
+# The version is CalVer, computed here rather than committed: yy.M.<build id>, the same scheme
+# every other package from this organisation uses. Nothing in the repository carries a release
+# version - Directory.Build.props holds a VersionPrefix for local builds only, and the /p:Version
+# below overrides it.
+
+variables:
+  solution: 'Autobahn.slnx'
+  buildConfiguration: 'Release'
+  targetVersion: yy.M.$(build.buildId)
+
+trigger:
+- main
+
+# Linux, unlike the hnsw pipeline: the UI staging step is a bash script, and the test suite
+# spends its time in Task.Delay rather than in anything platform-specific.
+pool:
+  vmImage: 'ubuntu-latest'
+
+steps:
+- task: Bash@3
+  displayName: 'Create CalVer Version'
+  inputs:
+    targetType: 'inline'
+    script: |
+      set -euo pipefail
+      dottedDate=$(date +%y.%-m)
+      modBuildID=$(( BUILD_BUILDID % 65536 ))   # ensure fits in int16
+      newTargetVersion="$dottedDate.$modBuildID"
+      echo "##vso[task.setvariable variable=targetVersion;]$newTargetVersion"
+      echo "Updated targetVersion to '$newTargetVersion'"
+
+# global.json pins the SDK and opts `dotnet test` into Microsoft.Testing.Platform, which is
+# what the TUnit suite runs on. Reading it here keeps the agent on the same SDK as CI.
+- task: UseDotNet@2
+  displayName: 'Use the SDK global.json pins'
+  inputs:
+    packageType: sdk
+    useGlobalJson: true
+
+# Before the build, because the CLI embeds the compiled UI as a resource: a package built
+# without this step ships a tool whose live view is a page explaining that it was not built in.
+- task: Bash@3
+  displayName: 'Build and stage the web UI'
+  inputs:
+    targetType: 'inline'
+    script: |
+      set -euo pipefail
+      dotnet tool update --global Transpose.Compiler
+      export PATH="$PATH:$HOME/.dotnet/tools"
+      ./scripts/build-ui.sh $(buildConfiguration)
+
+- task: DotNetCoreCLI@2
+  displayName: 'restore nuget'
+  inputs:
+    command: 'restore'
+    projects: '$(solution)'
+
+- task: DotNetCoreCLI@2
+  displayName: 'build'
+  inputs:
+    command: 'build'
+    projects: '$(solution)'
+    arguments: '-c $(buildConfiguration) --no-restore /p:Version=$(targetVersion) /p:LangVersion=latest'
+
+# The whole suite, not the fast subset a pull request gets. A slow gate is one people learn to
+# ignore, but a package published without the slow tests is one nobody can un-publish.
+#
+# A plain script rather than DotNetCoreCLI@2: that task appends `--logger trx` to publish the
+# results, and the suite runs on Microsoft.Testing.Platform, which rejects VSTest's arguments
+# outright. A failing test fails this step, which is the part that matters.
+- task: Bash@3
+  displayName: 'test'
+  inputs:
+    targetType: 'inline'
+    script: |
+      set -euo pipefail
+      dotnet test $(solution) -c $(buildConfiguration) --no-build
+
+# Packs the solution: the eight packable projects pack, the test project opts out with
+# IsPackable. Autobahn itself also produces a .snupkg, which travels with its .nupkg.
+- task: DotNetCoreCLI@2
+  displayName: 'pack'
+  inputs:
+    command: 'pack'
+    packagesToPack: '$(solution)'
+    versioningScheme: 'off'
+    configuration: '$(buildConfiguration)'
+    buildProperties: 'Version="$(targetVersion)";LangVersion="latest"'
+    nobuild: true
+    packDirectory: '$(Build.ArtifactStagingDirectory)'
+
+- task: PublishBuildArtifacts@1
+  displayName: 'publish the packages as build artifacts'
+  inputs:
+    PathtoPublish: '$(Build.ArtifactStagingDirectory)'
+    ArtifactName: 'packages'
+
+- task: NuGetCommand@2
+  displayName: 'push nuget'
+  inputs:
+    command: 'push'
+    packagesToPush: '$(Build.ArtifactStagingDirectory)/*.nupkg'
+    nuGetFeedType: 'external'
+    publishFeedCredentials: 'nuget-curiosity-org'

@@ -347,3 +347,13 @@ artifacts/
 
 # The compiled Tesserae UI, staged into the CLI by scripts/build-ui.sh. Built, not authored.
 src/Autobahn.Cli/Ui/wwwroot/
+
+# Source is not build output, and the stock rules above match at any depth. A folder under
+# src/ or tests/ that happens to be called Reports or Log is source, and without these
+# negations it is silently never committed - which is exactly how the report writers under
+# src/Autobahn/Internal/Services/Reports/ went missing from this repository. bin/, obj/,
+# Debug/ and Release/ are deliberately not negated: under src/ those really are build output.
+!src/**/[Rr]eports/
+!src/**/[Ll]og/
+!tests/**/[Rr]eports/
+!tests/**/[Ll]og/

@@ -205,15 +205,15 @@ The whole engine is C#. What is left of this section is the benchmark work, call
   fold `examples/Examples.slnx` into CI so they cannot rot unnoticed. *Seven now — HelloWorld,
   LoadModel, Metrics, Thresholds, HttpApi, MessageBrokers and CliScenarios (with a `.csx`) — and CI builds
   the solution on every push.*
-- [x] **Packaging.** `dotnet pack` producing a correct package, plus a small script for the
-  release steps. No build framework. *Eight packages pack from the root;
-  `scripts/release.sh` verifies, packs and tags, and leaves pushing the tag - the only thing
-  that publishes - to a person.*
+- [x] **Packaging.** `dotnet pack` producing a correct package. No build framework. *Eight
+  packages pack from the root, and the publishing pipeline packs the solution rather than
+  naming them one by one, so a ninth package needs no pipeline edit.*
 - [x] **CI, from scratch.** The inherited GitHub Actions workflows were deleted, not
   parked: they built a solution that no longer exists, pinned an old SDK, and published to
   NuGet under the upstream package identity. Write the replacement: build and test on push
-  and PR to `main`, publish on tag rather than on every push. One target framework means no
-  matrix — keep it that way. Two things it has to get right that the old one did not: the
+  and PR to `main` in GitHub Actions, and publish from a separate Azure DevOps pipeline
+  (`.devops/build-nuget.yml`) so the gate and the publisher are different things. One target
+  framework means no matrix — keep it that way. Two things it has to get right that the old one did not: the
   test project runs on Microsoft.Testing.Platform (`dotnet test` needs the `global.json`
   runner opt-in), and the full suite spends minutes of wall clock in `Task.Delay`, so the
   gate should run the `Category!=slow` subset on PRs and everything on `main`.
