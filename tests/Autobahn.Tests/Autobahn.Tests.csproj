@@ -13,6 +13,10 @@
 
     <ItemGroup>
         <PackageReference Include="TUnit" Version="1.65.31" />
+        <!-- The broker the MQTT tests run against, in this process. The helper package must
+             never carry it: a load test is a client, and shipping a broker inside a client
+             package would be shipping the thing under test. -->
+        <PackageReference Include="MQTTnet.Server" Version="5.2.0.1603" />
     </ItemGroup>
 
     <ItemGroup>
@@ -25,6 +29,8 @@
         <ProjectReference Include="../../src/Autobahn.WebSockets/Autobahn.WebSockets.csproj" />
         <ProjectReference Include="../../src/Autobahn.OpenTelemetry/Autobahn.OpenTelemetry.csproj" />
         <ProjectReference Include="../../src/Autobahn.Grpc/Autobahn.Grpc.csproj" />
+        <ProjectReference Include="../../src/Autobahn.Mqtt/Autobahn.Mqtt.csproj" />
+        <ProjectReference Include="../../src/Autobahn.Amqp/Autobahn.Amqp.csproj" />
     </ItemGroup>
 
     <ItemGroup>

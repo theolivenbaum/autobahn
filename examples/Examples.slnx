@@ -6,6 +6,9 @@
   <Project Path="Thresholds/Thresholds.csproj" />
   <Project Path="CliScenarios/CliScenarios.csproj" />
   <Project Path="HttpApi/HttpApi.csproj" />
+  <Project Path="MessageBrokers/MessageBrokers.csproj" />
   <Project Path="../src/Autobahn.Http/Autobahn.Http.csproj" />
   <Project Path="../src/Autobahn.OpenTelemetry/Autobahn.OpenTelemetry.csproj" />
+  <Project Path="../src/Autobahn.Mqtt/Autobahn.Mqtt.csproj" />
+  <Project Path="../src/Autobahn.Amqp/Autobahn.Amqp.csproj" />
 </Solution>
