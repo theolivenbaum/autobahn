@@ -143,8 +143,12 @@ The bulk of the work. Port file by file, bottom-up, keeping the suite green thro
 - [ ] **Replace the legacy build script.** The inherited Cake pipeline clones upstream
   plugin repositories and references projects that do not exist here. Replace with a plain
   `dotnet build` / `dotnet pack` pipeline plus a small script for the release steps.
-- [ ] **CI.** Build and test on push and PR to `main`; publish on tag rather than on every
-  push to `main`. One target framework means no matrix — keep it that way.
+- [ ] **CI, from scratch.** The inherited GitHub Actions workflows are parked — renamed to
+  `.github/workflows/*.yml.disable` so Actions ignores them — because they build a solution
+  that is about to be rewritten, pin an old SDK, and publish to NuGet under the upstream
+  package identity. Re-enable only once there is something worth gating: build and test on
+  push and PR to `main`, publish on tag rather than on every push. One target framework
+  means no matrix — keep it that way.
 - [ ] **Dependency sweep.** Audit and update dependencies, drop packages the C# engine no
   longer needs (several exist only to make F# ergonomic), and add automated vulnerability
   scanning to CI.

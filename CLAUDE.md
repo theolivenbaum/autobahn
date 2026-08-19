@@ -66,9 +66,17 @@ Run the full suite locally before pushing anything that touches the scheduler, t
 actor or the reporting pipeline — those are the areas where a green filtered run still
 hides a regression.
 
+**CI is off.** The GitHub Actions workflows are parked as
+`.github/workflows/*.yml.disable`, which Actions ignores — they build a solution that is
+about to be rewritten and publish under the upstream package identity. Nothing runs on
+push, so the local commands above are the only check there is until CI is rebuilt. Don't
+re-enable a workflow by renaming it back; write the replacement (see TODO.md).
+
 `build.cake` is the legacy Cake pipeline inherited from NBomber. It still references
 PragmaticFlow plugin repositories and a `src/NBomber.Contracts` project that does not exist
-here; it is not part of the working build and will be replaced (see TODO.md).
+here; it is not part of the working build and will be replaced (see TODO.md). `build.ps1`
+and `build.sh` are its bootstrappers and are equally dead — they are left in place rather
+than disabled because nothing invokes them automatically.
 
 ## Architecture
 
