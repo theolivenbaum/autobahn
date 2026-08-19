@@ -1,7 +1,7 @@
 using System.Data;
-using Microsoft.Extensions.Configuration;
 using Autobahn.Internal.Infra;
 using Autobahn.Stats;
+using Microsoft.Extensions.Configuration;
 
 namespace Autobahn.Internal.Services.TestHost;
 

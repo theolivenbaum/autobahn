@@ -149,8 +149,11 @@ The whole engine is C#. What is left of this section is the benchmark work, call
 - [x] **Set runtime configuration properly** in the shipped projects — server GC and
   concurrent GC, and `GCLatencyMode.SustainedLowLatency` for the duration of a run, so the
   generator does not report its own gen2 pause as the target's latency.
-- [ ] **Confirm the thread-pool story.** A load generator's own scheduling is its most
+- [x] **Confirm the thread-pool story.** A load generator's own scheduling is its most
   common self-inflicted bottleneck; document what Autobahn assumes and what it configures.
+  *Documented in README.md. Autobahn sets server and concurrent GC plus
+  `SustainedLowLatency`, and deliberately sets nothing on the thread pool; the hints
+  analyzer now says so when the runtime metrics show the generator was the bottleneck.*
 
 ### 0.5 Repository and release
 
@@ -167,14 +170,18 @@ The whole engine is C#. What is left of this section is the benchmark work, call
   the root (`Autobahn.slnx`) holding the engine, the CLI and the tests, so `dotnet build`
   and `dotnet test` need no arguments. The examples and the web UI live in their own
   solutions, out of the default build.
-- [ ] **Grow the examples back.** The three inherited examples were deleted: they depended
+- [x] **Grow the examples back.** The three inherited examples were deleted: they depended
   on upstream `NBomber.Http`, `NBomber.Data` and a sink package, none of which this fork
   has. `examples/HelloWorld` replaces them and builds against the local project. More are
   owed as the features they would demonstrate land — and once there is a set worth gating,
-  fold `examples/Examples.slnx` into CI so they cannot rot unnoticed.
-- [ ] **Packaging.** `dotnet pack` producing a correct package, plus a small script for the
-  release steps. No build framework.
-- [ ] **CI, from scratch.** The inherited GitHub Actions workflows were deleted, not
+  fold `examples/Examples.slnx` into CI so they cannot rot unnoticed. *Six now — HelloWorld,
+  LoadModel, Metrics, Thresholds, HttpApi and CliScenarios (with a `.csx`) — and CI builds
+  the solution on every push.*
+- [x] **Packaging.** `dotnet pack` producing a correct package, plus a small script for the
+  release steps. No build framework. *Seven packages pack from the root;
+  `scripts/release.sh` verifies, packs and tags, and leaves pushing the tag - the only thing
+  that publishes - to a person.*
+- [x] **CI, from scratch.** The inherited GitHub Actions workflows were deleted, not
   parked: they built a solution that no longer exists, pinned an old SDK, and published to
   NuGet under the upstream package identity. Write the replacement: build and test on push
   and PR to `main`, publish on tag rather than on every push. One target framework means no
@@ -187,11 +194,13 @@ The whole engine is C#. What is left of this section is the benchmark work, call
   and Binder providers, Logging plus its Configuration provider). Gone: FSharp.Core,
   FsToolkit.ErrorHandling, FSharp.Json, FuncyDown, CommandLineParser, ConsoleTables,
   Serilog and its four sinks/enrichers, and the external `NBomber.Contracts` package.
-  Automated vulnerability scanning still needs somewhere to run — see CI, above.
+  Automated vulnerability scanning runs in CI and fails the build on a known-vulnerable
+  dependency, transitive ones included.
 - [x] **Repository hygiene.** File-scoped namespaces, nullable reference types enabled
   solution-wide, and a `Directory.Build.props` that declares the target framework, the
   language level and the package metadata once instead of per project. The
-  `.editorconfig`-driven format check still needs CI to run in.
+  `.editorconfig` now states the conventions rather than gesturing at them, and
+  `dotnet format --verify-no-changes` runs in CI.
 - [x] **Keep and extend the test suite.** The upstream development line dropped its
   integration tests. Autobahn kept them, ported them to C#/TUnit, and added coverage the
   fork point did not have (load-simulation exhaustiveness, config parsing and rejection,

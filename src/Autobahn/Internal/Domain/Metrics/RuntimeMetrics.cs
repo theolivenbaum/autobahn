@@ -1,7 +1,7 @@
 using System.Diagnostics;
+using Autobahn.Metrics;
 using Microsoft.Extensions.Logging;
 using ZLogger;
-using Autobahn.Metrics;
 
 namespace Autobahn.Internal.Domain.Metrics;
 

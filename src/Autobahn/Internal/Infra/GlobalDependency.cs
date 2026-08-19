@@ -1,8 +1,8 @@
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 using Autobahn.Configuration;
 using Autobahn.Internal.Domain.Metrics;
 using Autobahn.Plugins;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace Autobahn.Internal.Infra;
 

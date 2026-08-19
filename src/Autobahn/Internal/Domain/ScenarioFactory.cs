@@ -1,9 +1,9 @@
 using System.Text;
+using Autobahn.Configuration;
+using Autobahn.Metrics;
+using Autobahn.Stats;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Autobahn.Metrics;
-using Autobahn.Configuration;
-using Autobahn.Stats;
 
 namespace Autobahn.Internal.Domain;
 
@@ -51,14 +51,14 @@ internal static class ScenarioFactory
 
     public static ScenarioInfo CreateScenarioInfo(
         string scenarioName, TimeSpan duration, int threadNumber, int copyCount, ScenarioOperation operation) => new()
-    {
-        ThreadId = $"{scenarioName}_{threadNumber}",
-        ThreadNumber = threadNumber,
-        CopyCount = copyCount,
-        ScenarioName = scenarioName,
-        ScenarioDuration = duration,
-        ScenarioOperation = operation
-    };
+        {
+            ThreadId = $"{scenarioName}_{threadNumber}",
+            ThreadNumber = threadNumber,
+            CopyCount = copyCount,
+            ScenarioName = scenarioName,
+            ScenarioDuration = duration,
+            ScenarioOperation = operation
+        };
 
     public static Result<RuntimeScenario> CreateScenario(ScenarioProps props) => CreateScenario(props, [], 0);
 

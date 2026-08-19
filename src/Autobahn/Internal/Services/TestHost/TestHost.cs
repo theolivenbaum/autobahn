@@ -1,9 +1,9 @@
-using Microsoft.Extensions.Logging;
 using Autobahn.Internal.Domain;
 using Autobahn.Internal.Domain.Scheduler;
 using Autobahn.Internal.Domain.Stats;
 using Autobahn.Internal.Infra;
 using Autobahn.Stats;
+using Microsoft.Extensions.Logging;
 
 namespace Autobahn.Internal.Services.TestHost;
 

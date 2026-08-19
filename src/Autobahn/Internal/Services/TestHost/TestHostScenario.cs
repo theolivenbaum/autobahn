@@ -1,7 +1,7 @@
-using Spectre.Console;
 using Autobahn.Internal.Domain;
 using Autobahn.Internal.Infra;
 using Autobahn.Stats;
+using Spectre.Console;
 
 namespace Autobahn.Internal.Services.TestHost;
 

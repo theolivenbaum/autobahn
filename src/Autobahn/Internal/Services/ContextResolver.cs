@@ -1,10 +1,10 @@
-using Microsoft.Extensions.Logging;
-using Autobahn.Metrics;
 using Autobahn.Configuration;
 using Autobahn.Internal.Domain;
 using Autobahn.Internal.Domain.Thresholds;
+using Autobahn.Metrics;
 using Autobahn.Stats;
 using Autobahn.Thresholds;
+using Microsoft.Extensions.Logging;
 
 namespace Autobahn.Internal.Services;
 

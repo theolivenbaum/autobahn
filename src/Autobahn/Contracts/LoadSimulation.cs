@@ -52,14 +52,14 @@ public abstract record LoadSimulation
     /// </summary>
     public TimeSpan Duration => this switch
     {
-        RampingConstant x       => x.During,
-        KeepConstant x          => x.During,
-        RampingInject x         => x.During,
-        Inject x                => x.During,
-        InjectRandom x          => x.During,
-        Pause x                 => x.During,
-        IterationsForConstant   => TimeSpan.Zero,
-        IterationsForInject     => TimeSpan.Zero,
+        RampingConstant x => x.During,
+        KeepConstant x => x.During,
+        RampingInject x => x.During,
+        Inject x => x.During,
+        InjectRandom x => x.During,
+        Pause x => x.During,
+        IterationsForConstant => TimeSpan.Zero,
+        IterationsForInject => TimeSpan.Zero,
         _ => throw new NotSupportedException($"Unknown load simulation: {GetType().Name}")
     };
 
@@ -69,7 +69,7 @@ public abstract record LoadSimulation
     public int? IterationCount => this switch
     {
         IterationsForConstant x => x.Iterations,
-        IterationsForInject x   => x.Iterations,
+        IterationsForInject x => x.Iterations,
         _ => null
     };
 }

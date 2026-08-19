@@ -23,6 +23,11 @@
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageIcon>autobahn-icon.png</PackageIcon>
 
+        <!-- Playwright ships PowerShell helpers under tools/, and NuGet warns once per file
+             that it will not auto-run them. It is not meant to: they are there for a person
+             to invoke. Nothing to fix, so the warning is silenced rather than tolerated. -->
+        <NoWarn>$(NoWarn);NU5111</NoWarn>
+
         <ServerGarbageCollection>true</ServerGarbageCollection>
         <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
     </PropertyGroup>

@@ -1,6 +1,6 @@
-using Microsoft.Extensions.Logging;
 using Autobahn.Cli;
 using Autobahn.Stats;
+using Microsoft.Extensions.Logging;
 
 namespace Autobahn.Tests;
 

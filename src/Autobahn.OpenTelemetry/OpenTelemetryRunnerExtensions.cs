@@ -1,7 +1,7 @@
+using Autobahn.Stats;
 using OpenTelemetry;
 using OpenTelemetry.Metrics;
 using OpenTelemetry.Resources;
-using Autobahn.Stats;
 
 namespace Autobahn.OpenTelemetry;
 

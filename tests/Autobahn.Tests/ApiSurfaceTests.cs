@@ -1,5 +1,5 @@
-using Microsoft.Extensions.Configuration;
 using Autobahn.Plugins.Network;
+using Microsoft.Extensions.Configuration;
 
 namespace Autobahn.Tests;
 

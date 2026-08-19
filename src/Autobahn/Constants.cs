@@ -1,7 +1,7 @@
-namespace Autobahn;
 
 using Autobahn.Stats;
 
+namespace Autobahn;
 /// <summary>Every tunable default in one place.</summary>
 internal static class Constants
 {

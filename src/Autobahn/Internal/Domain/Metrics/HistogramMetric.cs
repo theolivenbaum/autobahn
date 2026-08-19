@@ -1,6 +1,6 @@
-using HdrHistogram;
 using Autobahn.Metrics;
 using Autobahn.Stats;
+using HdrHistogram;
 
 namespace Autobahn.Internal.Domain.Metrics;
 

@@ -1,8 +1,8 @@
-using Microsoft.Extensions.Logging;
 using System.Text.Json;
 using Autobahn.Metrics;
 using Autobahn.Stats;
 using Autobahn.Thresholds;
+using Microsoft.Extensions.Logging;
 
 namespace Autobahn.Tests;
 

@@ -1,15 +1,138 @@
-# EditorConfig is awesome:
-http://EditorConfig.org
+# The repository's C# conventions, in the one place a formatter and an IDE both read.
+# CLAUDE.md explains why they are what they are; this file is what enforces them, and
+# `dotnet format --verify-no-changes` in CI is what makes it more than a suggestion.
 
-# top-most EditorConfig file
 root = true
 
-# Default settings:
-# A newline ending every file
-# Use 4 spaces as indentation
 [*]
 charset = utf-8
+end_of_line = lf
 insert_final_newline = true
 indent_style = space
 indent_size = 4
 trim_trailing_whitespace = true
+
+[*.{json,jsonc,yml,yaml,csproj,props,targets,slnx}]
+indent_size = 2
+
+[*.md]
+# Two trailing spaces are a hard line break in markdown, and trimming them changes the text.
+trim_trailing_whitespace = false
+
+[*.cs]
+max_line_length = 120
+
+# Namespaces and usings.
+csharp_style_namespace_declarations = file_scoped:error
+# System first, which is what the whole codebase already does.
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = false
+csharp_using_directive_placement = outside_namespace:error
+
+# `var` where the type is already on the line, the type where it is not.
+csharp_style_var_for_built_in_types = false:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+csharp_style_var_elsewhere = false:suggestion
+
+# Expression-bodied members: fine for one-liners, not for anything with a body.
+csharp_style_expression_bodied_methods = when_on_single_line:suggestion
+csharp_style_expression_bodied_properties = when_on_single_line:suggestion
+csharp_style_expression_bodied_accessors = when_on_single_line:suggestion
+csharp_style_expression_bodied_constructors = false:suggestion
+
+# Modern C# the codebase already uses throughout.
+csharp_style_prefer_primary_constructors = true:suggestion
+csharp_style_prefer_switch_expression = true:suggestion
+csharp_style_prefer_pattern_matching = true:suggestion
+csharp_style_prefer_not_pattern = true:suggestion
+csharp_style_prefer_range_operator = true:suggestion
+csharp_style_prefer_index_operator = true:suggestion
+csharp_prefer_simple_using_statement = true:suggestion
+csharp_style_prefer_null_check_over_type_check = true:suggestion
+dotnet_style_collection_initializer = true:suggestion
+dotnet_style_object_initializer = true:suggestion
+dotnet_style_coalesce_expression = true:suggestion
+dotnet_style_null_propagation = true:suggestion
+dotnet_style_prefer_conditional_expression_over_assignment = true:silent
+dotnet_style_prefer_conditional_expression_over_return = true:silent
+
+# Braces on their own line, which is what the whole codebase already does.
+csharp_new_line_before_open_brace = all
+csharp_new_line_before_else = true
+csharp_new_line_before_catch = true
+csharp_new_line_before_finally = true
+
+# A short record's members are allowed to share a line. `MinBytes = 0, MaxBytes = 0` says
+# one thing and reads as one thing; five lines of it does not.
+csharp_new_line_before_members_in_object_initializers = false
+csharp_new_line_before_members_in_anonymous_types = false
+
+# Indentation.
+csharp_indent_case_contents = true
+csharp_indent_switch_labels = true
+csharp_indent_labels = one_less_than_current
+csharp_indent_block_contents = true
+csharp_indent_braces = false
+csharp_indent_case_contents_when_block = false
+
+# Spacing.
+csharp_space_after_cast = false
+csharp_space_after_keywords_in_control_flow_statements = true
+csharp_space_between_method_declaration_parameter_list_parentheses = false
+csharp_space_between_method_call_parameter_list_parentheses = false
+csharp_space_between_parentheses = false
+csharp_space_before_colon_in_inheritance_clause = true
+csharp_space_after_colon_in_inheritance_clause = true
+csharp_space_around_binary_operators = before_and_after
+csharp_space_before_open_square_brackets = false
+csharp_space_between_empty_square_brackets = false
+
+# A guard clause is allowed to be one line. `if (_disposed) return;` says one thing and
+# reads as one thing; splitting it adds a line and no information.
+csharp_preserve_single_line_statements = true
+csharp_preserve_single_line_blocks = true
+
+# Naming. Rules are evaluated in the order they appear, so the narrower ones come first:
+# a const is also a field, and a static readonly field is also a private field.
+
+dotnet_naming_style.pascal_case.capitalization = pascal_case
+dotnet_naming_style.underscore_camel_case.capitalization = camel_case
+dotnet_naming_style.underscore_camel_case.required_prefix = _
+
+# A const field is PascalCase. Locals are excluded: `const int rowCount = 100` inside a
+# method reads correctly as a local, because that is what it is.
+dotnet_naming_rule.const_fields_are_pascal_case.severity = warning
+dotnet_naming_rule.const_fields_are_pascal_case.symbols = const_fields
+dotnet_naming_rule.const_fields_are_pascal_case.style = pascal_case
+
+dotnet_naming_symbols.const_fields.applicable_kinds = field
+dotnet_naming_symbols.const_fields.required_modifiers = const
+
+# A static readonly field is PascalCase too. It is a value the type owns rather than state
+# an instance carries, and the codebase already names them that way.
+dotnet_naming_rule.static_readonly_fields_are_pascal_case.severity = warning
+dotnet_naming_rule.static_readonly_fields_are_pascal_case.symbols = static_readonly_fields
+dotnet_naming_rule.static_readonly_fields_are_pascal_case.style = pascal_case
+
+dotnet_naming_symbols.static_readonly_fields.applicable_kinds = field
+dotnet_naming_symbols.static_readonly_fields.required_modifiers = static, readonly
+
+# Everything else private on an instance carries the underscore.
+dotnet_naming_rule.private_fields_with_underscore.severity = warning
+dotnet_naming_rule.private_fields_with_underscore.symbols = private_fields
+dotnet_naming_rule.private_fields_with_underscore.style = underscore_camel_case
+
+dotnet_naming_symbols.private_fields.applicable_kinds = field
+dotnet_naming_symbols.private_fields.applicable_accessibilities = private
+
+# Nullable reference types are on solution-wide; a dereference the compiler cannot prove
+# safe is a bug to fix rather than a warning to scroll past.
+dotnet_diagnostic.CS8600.severity = error
+dotnet_diagnostic.CS8602.severity = error
+dotnet_diagnostic.CS8603.severity = error
+dotnet_diagnostic.CS8604.severity = error
+dotnet_diagnostic.CS8618.severity = error
+
+# The generated HTML report's assets are not ours to format.
+[src/Autobahn/Resources/**]
+generated_code = true

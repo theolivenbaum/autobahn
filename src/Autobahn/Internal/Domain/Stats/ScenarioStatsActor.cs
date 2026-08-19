@@ -1,8 +1,8 @@
 using System.Collections.Concurrent;
 using System.Threading.Channels;
+using Autobahn.Stats;
 using Microsoft.Extensions.Logging;
 using ZLogger;
-using Autobahn.Stats;
 
 namespace Autobahn.Internal.Domain.Stats;
 

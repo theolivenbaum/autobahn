@@ -74,7 +74,8 @@ internal class ScenarioWeightTests
         Scenario.Create(name, _ => Task.FromResult<IResponse>(Response.Ok()))
             .WithoutWarmUp()
             .WithLoadSimulations(Simulation.Inject(rate, Time.Seconds(1), Time.Seconds(10)))
-            .WithWeight(weight ?? 0) with { Weight = weight };
+            .WithWeight(weight ?? 0) with
+        { Weight = weight };
 
     [Test]
     public async Task Weights_split_the_combined_load_between_scenarios()
@@ -167,11 +168,13 @@ internal class ScenarioWeightTests
             .WithoutWarmUp()
             .WithLoadSimulations(
                 Simulation.RampingConstant(100, Time.Seconds(10)),
-                Simulation.KeepConstant(100, Time.Seconds(10))) with { Weight = 25 };
+                Simulation.KeepConstant(100, Time.Seconds(10))) with
+        { Weight = 25 };
 
         var other = Scenario.Create("write", _ => Task.FromResult<IResponse>(Response.Ok()))
             .WithoutWarmUp()
-            .WithLoadSimulations(Simulation.KeepConstant(100, Time.Seconds(20))) with { Weight = 75 };
+            .WithLoadSimulations(Simulation.KeepConstant(100, Time.Seconds(20))) with
+        { Weight = 75 };
 
         var scenarios = ScenarioFactory.CreateScenarios([props, other]).Value;
         var read = scenarios.Single(x => x.ScenarioName == "read");

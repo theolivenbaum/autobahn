@@ -68,15 +68,15 @@ internal sealed class LoadSimulationConverter : JsonConverter<LoadSimulation>
         switch (value)
         {
             case LoadSimulation.RampingConstant x: WriteCase(writer, nameof(LoadSimulation.RampingConstant), x.Copies, x.During); break;
-            case LoadSimulation.KeepConstant x:    WriteCase(writer, nameof(LoadSimulation.KeepConstant), x.Copies, x.During); break;
-            case LoadSimulation.RampingInject x:   WriteCase(writer, nameof(LoadSimulation.RampingInject), x.Rate, x.Interval, x.During); break;
-            case LoadSimulation.Inject x:          WriteCase(writer, nameof(LoadSimulation.Inject), x.Rate, x.Interval, x.During); break;
-            case LoadSimulation.InjectRandom x:    WriteCase(writer, nameof(LoadSimulation.InjectRandom), x.MinRate, x.MaxRate, x.Interval, x.During); break;
+            case LoadSimulation.KeepConstant x: WriteCase(writer, nameof(LoadSimulation.KeepConstant), x.Copies, x.During); break;
+            case LoadSimulation.RampingInject x: WriteCase(writer, nameof(LoadSimulation.RampingInject), x.Rate, x.Interval, x.During); break;
+            case LoadSimulation.Inject x: WriteCase(writer, nameof(LoadSimulation.Inject), x.Rate, x.Interval, x.During); break;
+            case LoadSimulation.InjectRandom x: WriteCase(writer, nameof(LoadSimulation.InjectRandom), x.MinRate, x.MaxRate, x.Interval, x.During); break;
             case LoadSimulation.IterationsForConstant x:
                 WriteCase(writer, nameof(LoadSimulation.IterationsForConstant), x.Copies, x.Iterations); break;
             case LoadSimulation.IterationsForInject x:
                 WriteCase(writer, nameof(LoadSimulation.IterationsForInject), x.Rate, x.Interval, x.Iterations); break;
-            case LoadSimulation.Pause x:           WriteCase(writer, nameof(LoadSimulation.Pause), x.During); break;
+            case LoadSimulation.Pause x: WriteCase(writer, nameof(LoadSimulation.Pause), x.During); break;
             default: throw new JsonException($"Unknown load simulation: {value.GetType().Name}");
         }
 

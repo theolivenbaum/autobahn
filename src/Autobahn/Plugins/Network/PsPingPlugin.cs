@@ -1,10 +1,10 @@
 using System.Data;
 using System.Diagnostics;
 using System.Net.Sockets;
+using Autobahn.Stats;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ZLogger;
-using Autobahn.Stats;
 
 namespace Autobahn.Plugins.Network;
 

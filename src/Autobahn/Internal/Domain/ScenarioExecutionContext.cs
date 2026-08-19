@@ -1,8 +1,8 @@
 using System.Diagnostics;
-using Microsoft.Extensions.Logging;
-using Autobahn.Metrics;
 using Autobahn.Internal.Domain.Stats;
+using Autobahn.Metrics;
 using Autobahn.Stats;
+using Microsoft.Extensions.Logging;
 
 namespace Autobahn.Internal.Domain;
 

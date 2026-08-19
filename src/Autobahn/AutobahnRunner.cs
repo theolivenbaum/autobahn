@@ -1,7 +1,5 @@
 using System.Net.Http;
 using System.Runtime;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 using Autobahn.Configuration;
 using Autobahn.Internal;
 using Autobahn.Internal.Json;
@@ -9,6 +7,8 @@ using Autobahn.Internal.Services;
 using Autobahn.Plugins;
 using Autobahn.Stats;
 using Autobahn.Thresholds;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace Autobahn;
 

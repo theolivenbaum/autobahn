@@ -1,7 +1,7 @@
-using Microsoft.Extensions.Logging.Abstractions;
 using Autobahn.Internal.Domain;
 using Autobahn.Internal.Domain.Stats;
 using Autobahn.Stats;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Autobahn.Tests;
 

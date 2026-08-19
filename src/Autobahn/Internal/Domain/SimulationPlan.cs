@@ -36,7 +36,7 @@ internal static class SimulationPlan
         var failure = simulation switch
         {
             LoadSimulation.RampingConstant x => CheckCopies(x.Copies) ?? CheckDuration(x.During),
-            LoadSimulation.KeepConstant x    => CheckCopies(x.Copies) ?? CheckDuration(x.During),
+            LoadSimulation.KeepConstant x => CheckCopies(x.Copies) ?? CheckDuration(x.During),
 
             LoadSimulation.RampingInject x =>
                 CheckRate(x.Rate) ?? CheckIntervalIsPositive(x.Interval)
@@ -98,14 +98,14 @@ internal static class SimulationPlan
     /// <summary>The actor count a segment leaves behind for the next one to ramp from.</summary>
     private static int GetPrevCopiesCount(LoadSimulation simulation) => simulation switch
     {
-        LoadSimulation.RampingConstant x       => x.Copies,
-        LoadSimulation.KeepConstant x          => x.Copies,
-        LoadSimulation.RampingInject x         => x.Rate,
-        LoadSimulation.Inject x                => x.Rate,
-        LoadSimulation.InjectRandom x          => x.MaxRate,
+        LoadSimulation.RampingConstant x => x.Copies,
+        LoadSimulation.KeepConstant x => x.Copies,
+        LoadSimulation.RampingInject x => x.Rate,
+        LoadSimulation.Inject x => x.Rate,
+        LoadSimulation.InjectRandom x => x.MaxRate,
         LoadSimulation.IterationsForConstant x => x.Copies,
-        LoadSimulation.IterationsForInject x   => x.Rate,
-        LoadSimulation.Pause                   => 0,
+        LoadSimulation.IterationsForInject x => x.Rate,
+        LoadSimulation.Pause => 0,
         _ => throw new NotSupportedException($"Unknown load simulation: {simulation.GetType().Name}")
     };
 
@@ -158,23 +158,23 @@ internal static class SimulationPlan
     /// <summary>How often the scheduler re-evaluates this simulation.</summary>
     public static TimeSpan GetSimulationInterval(LoadSimulation simulation) => simulation switch
     {
-        LoadSimulation.RampingInject x       => x.Interval,
-        LoadSimulation.Inject x              => x.Interval,
-        LoadSimulation.InjectRandom x        => x.Interval,
+        LoadSimulation.RampingInject x => x.Interval,
+        LoadSimulation.Inject x => x.Interval,
+        LoadSimulation.InjectRandom x => x.Interval,
         LoadSimulation.IterationsForInject x => x.Interval,
         _ => Constants.OneSecond
     };
 
     public static string GetSimulationName(LoadSimulation simulation) => simulation switch
     {
-        LoadSimulation.RampingConstant       => "ramping_constant",
-        LoadSimulation.KeepConstant          => "keep_constant",
-        LoadSimulation.RampingInject         => "ramping_inject",
-        LoadSimulation.Inject                => "inject",
-        LoadSimulation.InjectRandom          => "inject_random",
+        LoadSimulation.RampingConstant => "ramping_constant",
+        LoadSimulation.KeepConstant => "keep_constant",
+        LoadSimulation.RampingInject => "ramping_inject",
+        LoadSimulation.Inject => "inject",
+        LoadSimulation.InjectRandom => "inject_random",
         LoadSimulation.IterationsForConstant => "iterations_for_constant",
-        LoadSimulation.IterationsForInject   => "iterations_for_inject",
-        LoadSimulation.Pause                 => "pause",
+        LoadSimulation.IterationsForInject => "iterations_for_inject",
+        LoadSimulation.Pause => "pause",
         _ => throw new NotSupportedException($"Unknown load simulation: {simulation.GetType().Name}")
     };
 
@@ -195,14 +195,14 @@ internal static class SimulationPlan
     {
         var value = simulation switch
         {
-            LoadSimulation.RampingConstant       => constantActorCount,
-            LoadSimulation.KeepConstant          => constantActorCount,
+            LoadSimulation.RampingConstant => constantActorCount,
+            LoadSimulation.KeepConstant => constantActorCount,
             LoadSimulation.IterationsForConstant => constantActorCount,
-            LoadSimulation.RampingInject         => oneTimeActorCount,
-            LoadSimulation.Inject                => oneTimeActorCount,
-            LoadSimulation.InjectRandom          => oneTimeActorCount,
-            LoadSimulation.IterationsForInject   => oneTimeActorCount,
-            LoadSimulation.Pause                 => 0,
+            LoadSimulation.RampingInject => oneTimeActorCount,
+            LoadSimulation.Inject => oneTimeActorCount,
+            LoadSimulation.InjectRandom => oneTimeActorCount,
+            LoadSimulation.IterationsForInject => oneTimeActorCount,
+            LoadSimulation.Pause => 0,
             _ => throw new NotSupportedException($"Unknown load simulation: {simulation.GetType().Name}")
         };
 
@@ -231,9 +231,9 @@ internal static class SimulationPlan
         LoadSimulation Scale(LoadSimulation simulation) => simulation switch
         {
             LoadSimulation.RampingConstant x => x with { Copies = ScaleValue(x.Copies) },
-            LoadSimulation.KeepConstant x    => x with { Copies = ScaleValue(x.Copies) },
-            LoadSimulation.RampingInject x   => x with { Rate = ScaleValue(x.Rate) },
-            LoadSimulation.Inject x          => x with { Rate = ScaleValue(x.Rate) },
+            LoadSimulation.KeepConstant x => x with { Copies = ScaleValue(x.Copies) },
+            LoadSimulation.RampingInject x => x with { Rate = ScaleValue(x.Rate) },
+            LoadSimulation.Inject x => x with { Rate = ScaleValue(x.Rate) },
 
             LoadSimulation.InjectRandom x => x with
             {
@@ -244,7 +244,7 @@ internal static class SimulationPlan
             // The iteration count is what the author asked to run, not a rate to divide up;
             // only the concurrency it runs at is a share of the combined load.
             LoadSimulation.IterationsForConstant x => x with { Copies = ScaleValue(x.Copies) },
-            LoadSimulation.IterationsForInject x   => x with { Rate = ScaleValue(x.Rate) },
+            LoadSimulation.IterationsForInject x => x with { Rate = ScaleValue(x.Rate) },
 
             LoadSimulation.Pause => simulation,
             _ => throw new NotSupportedException($"Unknown load simulation: {simulation.GetType().Name}")

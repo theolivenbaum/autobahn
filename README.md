@@ -628,6 +628,42 @@ one plain line per scenario through the ordinary logger, so it is in the log fil
 a terminal, the live table owns the screen while it is up and log lines raised in the
 meantime are replayed underneath it rather than drawn through it.
 
+## The load generator itself
+
+A load test that cannot show it was not itself the bottleneck is not evidence. Autobahn
+measures its own process (see *Metrics*) and, when the hints analyzer is on, says so when the
+numbers look like the generator's fault rather than the target's:
+
+```
+hint for LoadGenerator load generator:
+  The load generator's thread-pool queue reached 340 items (mean 84). Work waited to start,
+  and that wait is inside the latencies this run reported.
+```
+
+### What Autobahn assumes and what it sets
+
+| | |
+|--|--|
+| **Server GC, concurrent** | Set in the shipped projects. A workstation-GC generator pauses far more often, and every pause lands in a latency number. |
+| **`SustainedLowLatency`** | Set for the duration of a run, so a gen2 collection is deferred rather than taken mid-measurement. |
+| **Thread pool** | **Left alone.** Autobahn sets no minimum or maximum. |
+
+That last one is a decision, not an omission. The pool grows on demand, and forcing a large
+minimum hides the symptom of a scenario doing blocking work rather than fixing it — you get
+the same starvation later, with no queue to show for it.
+
+**What Autobahn assumes of a scenario** is that it is genuinely asynchronous. A scenario that
+blocks a pool thread — `.Result`, `.Wait()`, synchronous I/O, `Thread.Sleep` — takes a thread
+out of the pool for the duration, and at a few hundred concurrent copies that is the whole
+pool. The pool then grows by roughly one thread per half-second, so throughput climbs slowly
+towards the rate you asked for and every latency in between is queueing. It looks exactly like
+a target that degrades under load.
+
+`runtime.threadpool_queue` is what tells the two apart: a target getting slower does not fill
+the generator's queue. If you must block, raise the floor before the run —
+`ThreadPool.SetMinThreads` — and know that you are measuring a generator you have configured
+rather than one Autobahn did.
+
 ## Logging
 
 Logging is [Microsoft.Extensions.Logging](https://learn.microsoft.com/dotnet/core/extensions/logging)

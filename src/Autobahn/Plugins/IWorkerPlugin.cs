@@ -1,6 +1,6 @@
 using System.Data;
-using Microsoft.Extensions.Configuration;
 using Autobahn.Stats;
+using Microsoft.Extensions.Configuration;
 
 namespace Autobahn.Plugins;
 

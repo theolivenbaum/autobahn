@@ -220,6 +220,19 @@ cannot decide when a process exits, and throwing would take the reports with it.
 that lets a threshold fail must opt out with `WithoutThresholdExitCode()` or reset
 `Environment.ExitCode`** — it is process-wide, and a leaked failure fails the whole test run.
 
+### The load generator's own scheduling
+
+Autobahn sets server GC and concurrent GC in the shipped projects, and
+`GCLatencyMode.SustainedLowLatency` for the duration of a run. It sets **nothing** on the
+thread pool, deliberately: forcing a large minimum hides a scenario that blocks rather than
+fixing it, and produces the same starvation later with no queue left to diagnose it from.
+
+The assumption is that a scenario is genuinely asynchronous. `HintsAnalyzer.AnalyzeLoadGenerator`
+is what catches it when one is not — a thread-pool queue that never empties, sustained CPU
+above 85%, or a run full of gen2 collections all mean the numbers describe the generator. The
+thresholds there are deliberately loud rather than precise: a hint that fires on a healthy run
+gets ignored, and then so does the one that mattered.
+
 ### Logging
 
 Logging is `Microsoft.Extensions.Logging` with **ZLogger** providers behind it. There are
