@@ -46,6 +46,9 @@ internal sealed record SessionArgs
     /// <summary>Whether to print the above before the run starts.</summary>
     public bool ShowEffectiveConfig { get; init; }
 
+    /// <summary>Called with each closed interval's numbers, or null.</summary>
+    public Func<TimeLineHistoryRecord, Task>? OnInterval { get; init; }
+
     public static SessionArgs Empty { get; } = new()
     {
         TestInfo = TestInfo.Empty,

@@ -1,0 +1,29 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- The WebSocket helper, shipped as its own package for the same reason the HTTP one is. -->
+
+    <PropertyGroup>
+        <RootNamespace>Autobahn.WebSockets</RootNamespace>
+        <PackageId>Autobahn.WebSockets</PackageId>
+        <Title>Autobahn WebSockets</Title>
+        <Description>WebSocket helpers for Autobahn: a pooled client, request/response correlation and publish-then-consume measurement.</Description>
+        <PackageTags>load-testing;performance-testing;websockets</PackageTags>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageIcon>autobahn-icon.png</PackageIcon>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="../../README.md" Pack="true" Visible="false" PackagePath="" />
+        <None Include="../../LICENSE" Pack="true" Visible="false" PackagePath="" />
+        <None Include="../../assets/autobahn-icon.png" Pack="true" Visible="false" PackagePath="" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../Autobahn/Autobahn.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Autobahn.Tests" />
+    </ItemGroup>
+
+</Project>

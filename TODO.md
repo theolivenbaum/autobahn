@@ -354,28 +354,35 @@ are what make a load test usable as a CI gate.
 
 ## 7. Ecosystem: protocol helpers and export
 
-These ship as separate packages in this repository so they version together with the engine.
-None of them exists yet.
+These ship as separate packages in this repository so they version together with the engine:
+`Autobahn.Http`, `Autobahn.WebSockets`, `Autobahn.Grpc` and `Autobahn.OpenTelemetry`.
 
 **Protocol helpers**
 
-- [ ] **HTTP.** The single most-used integration and the one that needs the most care:
+- [x] **HTTP.** The single most-used integration and the one that needs the most care:
   a request builder, response validation hooks (including custom pass/fail rules per
   request), configurable per-request timeouts, correct payload size accounting that counts
   what actually went over the wire rather than just the visible body, status-code capture,
   connection and handler reuse with explicit control over pooling, per-virtual-user cookie
   and session handling, and an opt-in request/response tracing mode for debugging a test.
-- [ ] **WebSockets** with a client pool, covering both request/response and
+- [x] **WebSockets** with a client pool, covering both request/response and
   publish-then-consume patterns.
-- [ ] **gRPC**, unary and streaming.
+- [x] **gRPC**, unary and streaming. *Pooled channels plus measured unary, server-streaming
+  and caller-driven calls. Deliberately thin: the generated client is the API, and Autobahn
+  adds the measurement rather than a second surface.*
 - [ ] **Message brokers** — MQTT and AMQP — supporting both the pooled-client shape (each
   virtual user owns a connection) and the independent-actors shape (separate publisher and
-  consumer scenarios measuring end-to-end delivery latency).
+  consumer scenarios measuring end-to-end delivery latency). *Not started. The shape is
+  clear — it is the WebSocket helper's publish-then-consume pattern with a broker client
+  underneath — but neither can be tested without a broker to test against, and a helper
+  nothing has ever run is worse than none.*
 - [ ] **Browser-driven testing.** Drive real browsers to measure what a user experiences,
   not just what the server returns. Needs a deliberate design for parallelism and resource
   ceilings — browsers are orders of magnitude heavier than an HTTP client and will happily
-  make the load generator the bottleneck.
-- [ ] **Traffic-capture conversion.** Turn a recorded browser session (HAR) into a starting
+  make the load generator the bottleneck. *Not started, and the last of these to build: it
+  is the only one where the naive version is actively misleading, because a load generator
+  running out of memory looks exactly like a slow site.*
+- [x] **Traffic-capture conversion.** Turn a recorded browser session (HAR) into a starting
   scenario, so a realistic test does not start from a blank file.
 
 **Getting a run's numbers somewhere else**
@@ -384,11 +391,11 @@ Reporting sinks are out of scope (see *Explicitly out of scope*). The database-b
 the fork point pointed at — InfluxDB, TimescaleDB, Datadog, Loki, Elasticsearch — are not
 coming back in any form. What replaces them:
 
-- [ ] **OpenTelemetry (OTLP) export** of stats and metrics. The one integration worth
+- [x] **OpenTelemetry (OTLP) export** of stats and metrics. The one integration worth
   building, because it reaches every backend the user already runs instead of adding
   another; and because it is a *push at the end plus per-interval*, not a plugin contract
   that user code implements.
-- [ ] **Everything else goes through the run artifact** (section 5): a stable, versioned
+- [x] **Everything else goes through the run artifact** (section 5): a stable, versioned
   JSON document that a CI job, a dashboard importer or a comparison tool reads. One format
   to keep stable rather than a family of sink packages to keep building.
 

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <RootNamespace>Autobahn.Examples.HttpApi</RootNamespace>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../../src/Autobahn/Autobahn.csproj" />
+        <ProjectReference Include="../../src/Autobahn.Http/Autobahn.Http.csproj" />
+        <ProjectReference Include="../../src/Autobahn.OpenTelemetry/Autobahn.OpenTelemetry.csproj" />
+    </ItemGroup>
+
+</Project>

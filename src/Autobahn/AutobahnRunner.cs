@@ -147,6 +147,19 @@ public static class AutobahnRunner
         context with { CancellationToken = cancellationToken };
 
     /// <summary>
+    /// Calls back with each reporting interval's numbers as the run produces them - the live
+    /// half of getting a run's results somewhere else. The end-of-run half is the run
+    /// artifact, which the returned <c>SessionResult</c> also carries.
+    /// </summary>
+    /// <remarks>
+    /// A slow or throwing observer never holds up the run: it is invoked without being waited
+    /// on, and a failure is logged rather than propagated.
+    /// </remarks>
+    public static AutobahnContext WithIntervalObserver(
+        this AutobahnContext context, Func<Stats.TimeLineHistoryRecord, Task> observer) =>
+        context with { OnInterval = observer };
+
+    /// <summary>
     /// Prints every effective setting and the layer its value came from before the run starts,
     /// so "why is the report folder that" is answerable without reading three files. The same
     /// thing happens when the command line carries <c>--show-config</c>.

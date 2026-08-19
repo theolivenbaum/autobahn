@@ -352,6 +352,105 @@ program setting them itself.
 
 The terminal dashboard and the web UI are not wired up yet — see [TODO.md](TODO.md) section 8.
 
+## Protocol helpers
+
+Separate packages, versioned with the engine, so a test that does not speak a protocol does
+not carry it.
+
+### HTTP — `Autobahn.Http`
+
+```csharp
+using var clients = HttpClientPool.CreatePool(count: 20, new HttpClientSettings
+{
+    BaseAddress = "https://api.example.com",
+    UseCookies = true          // one cookie jar per virtual user, so each copy is a session
+});
+
+var scenario = Scenario.Create("read", async context =>
+    clients.GetClient(context.ScenarioInfo).Send(
+        HttpRequest.Get($"/users/{ids.Next()}")
+            .WithHeader("Accept", "application/json")
+            .WithCheck(HttpCheck.Create("no error in body", (_, body) => !body.Contains("\"error\"")))
+            .WithTimeout(TimeSpan.FromSeconds(5)),
+        context));
+```
+
+`HttpRequest` is a *description*, not an `HttpRequestMessage` — one of those can only be sent
+once, so a scenario reusing it would fail on the second iteration.
+
+- **Checks decide what success means.** Without any, a 2xx is a success. With one, a 2xx that
+  fails it is a failure — because an API that answers 200 with `{"error": …}` is not
+  succeeding, and a test that says it is has measured the wrong thing. A check that needs the
+  body says so, and the body is read only when something asked for it.
+- **Sizes count the wire, not the body.** The request line, every header and both bodies. A
+  40-byte JSON answer with 400 bytes of headers is ten times the traffic the body suggests.
+- **A request timeout is its own outcome** (`-200`), distinct from a transport failure
+  (`-201`) and from the iteration's own timeout.
+- `.WithTracing()` logs the request and the answer while you work out why a test is failing.
+
+**HAR conversion** turns a recorded browser session into a starting point:
+
+```csharp
+var requests = Har.FromFile("session.har");   // static assets and the recording's own
+                                              // cookies and tokens are dropped by default
+```
+
+### WebSockets — `Autobahn.WebSockets`
+
+Two shapes, because a socket is not request/response and pretending otherwise measures the
+wrong thing:
+
+```csharp
+// Request/response: the caller says which incoming message is the answer, because only the
+// protocol on top of the socket knows.
+await client.SendAndReceive(request, m => m.Text.StartsWith("reply:"), context, timeout);
+
+// Publish then consume: one scenario publishes, another consumes, and what is measured is
+// the delivery latency between them.
+await client.SendText(payload, context);
+await client.Receive(context);
+```
+
+### gRPC — `Autobahn.Grpc`
+
+Deliberately thin — the generated client is the API, and Autobahn adds the measurement:
+
+```csharp
+await GrpcCall.Unary("GetUser", context, ct => client.GetUserAsync(request, cancellationToken: ct));
+await GrpcCall.ServerStreaming("Watch", context, ct => client.Watch(request, cancellationToken: ct));
+```
+
+`GrpcChannelPool` builds channels with multiple HTTP/2 connections enabled, unlike gRPC's own
+default: a single connection has a concurrent-stream limit, and a load test that hits it
+measures its own queue rather than the server — which looks exactly like the server slowing
+down.
+
+## Getting the numbers somewhere else
+
+There are no reporting sinks and there will not be. Two routes instead:
+
+**OpenTelemetry** — `Autobahn.OpenTelemetry` pushes every reporting interval over OTLP, and
+flushes the last one before the process exits:
+
+```csharp
+var context = AutobahnRunner.RegisterScenarios(scenario)
+    .WithOpenTelemetry(out var exporter, new AutobahnOtlpOptions { ServiceName = "checkout-load" });
+
+using (exporter) context.Run(args);
+```
+
+Everything is tagged with the session, suite, test, scenario and step, so one dashboard
+serves every run. It reaches every backend you already run rather than adding another.
+
+**The run artifact** — the versioned JSON document (see *Reports*) is what a CI job, a
+dashboard importer or a comparison tool reads.
+
+For anything else there is one callback, not a plugin contract:
+
+```csharp
+.WithIntervalObserver(record => Ship(record))   // never awaited; a failure is logged, not fatal
+```
+
 ## Configuration
 
 Anything set in code can be overridden by a JSON config, so the same test binary can be
@@ -531,7 +630,11 @@ dotnet build examples/Examples.slnx
 ```
 Autobahn.slnx              the root solution: the engine, the CLI, the tests
 src/Autobahn/              the engine and the public API
-src/Autobahn.Cli/          the `autobahn` dotnet tool (skeleton)
+src/Autobahn.Cli/          the `autobahn` dotnet tool
+src/Autobahn.Http/         the HTTP helper and HAR conversion
+src/Autobahn.WebSockets/   the WebSocket helper
+src/Autobahn.Grpc/         the gRPC helper
+src/Autobahn.OpenTelemetry/ OTLP export
 src/Autobahn.Ui/           the Tesserae web UI (not started; own solution)
 src/Autobahn.Ui.Contracts/ wire DTOs shared by the host and the UI
 tests/Autobahn.Tests/      the test suite

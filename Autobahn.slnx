@@ -1,6 +1,10 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Autobahn/Autobahn.csproj" />
+    <Project Path="src/Autobahn.Http/Autobahn.Http.csproj" />
+    <Project Path="src/Autobahn.WebSockets/Autobahn.WebSockets.csproj" />
+    <Project Path="src/Autobahn.OpenTelemetry/Autobahn.OpenTelemetry.csproj" />
+    <Project Path="src/Autobahn.Grpc/Autobahn.Grpc.csproj" />
     <Project Path="src/Autobahn.Cli/Autobahn.Cli.csproj" />
   </Folder>
   <Folder Name="/tests/">

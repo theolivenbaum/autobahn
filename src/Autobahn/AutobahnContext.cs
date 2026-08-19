@@ -69,6 +69,17 @@ public sealed record AutobahnContext
     /// </summary>
     public required bool ShowEffectiveConfig { get; init; }
 
+    /// <summary>
+    /// Called with each reporting interval's numbers as the run produces them, or null.
+    /// </summary>
+    /// <remarks>
+    /// One delegate, deliberately - not the <c>IReportingSink</c> contract the fork point had.
+    /// That was an interface with its own lifecycle that user code implemented and Autobahn
+    /// drove; this is a callback handed the record the engine already built. Exporting a run
+    /// somewhere is the caller's business, and the run artifact covers the end-of-run case.
+    /// </remarks>
+    public Func<Stats.TimeLineHistoryRecord, Task>? OnInterval { get; init; }
+
     public static AutobahnContext Empty { get; } = new()
     {
         TestSuite = Constants.DefaultTestSuite,
@@ -94,6 +105,7 @@ public sealed record AutobahnContext
         EnableRuntimeMetrics = true,
         Thresholds = [],
         EnableThresholdExitCode = true,
-        ShowEffectiveConfig = false
+        ShowEffectiveConfig = false,
+        OnInterval = null
     };
 }

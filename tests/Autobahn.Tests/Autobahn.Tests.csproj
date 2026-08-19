@@ -21,6 +21,10 @@
              a project of their own: they are a hundred lines each, and a second test project
              would double the build for them. -->
         <ProjectReference Include="../../src/Autobahn.Cli/Autobahn.Cli.csproj" />
+        <ProjectReference Include="../../src/Autobahn.Http/Autobahn.Http.csproj" />
+        <ProjectReference Include="../../src/Autobahn.WebSockets/Autobahn.WebSockets.csproj" />
+        <ProjectReference Include="../../src/Autobahn.OpenTelemetry/Autobahn.OpenTelemetry.csproj" />
+        <ProjectReference Include="../../src/Autobahn.Grpc/Autobahn.Grpc.csproj" />
     </ItemGroup>
 
     <ItemGroup>

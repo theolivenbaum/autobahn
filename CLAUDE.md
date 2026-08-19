@@ -59,10 +59,11 @@ dotnet build
 dotnet test
 ```
 
-Keep it that way. `Autobahn.slnx` is the only solution at the root and holds the engine,
-the CLI and the test project — all of which build from a clean clone. If you add a project
-to the root solution, adding one that cannot build from a clean clone breaks the plain
-command for everyone.
+Keep it that way. `Autobahn.slnx` is the only solution at the root and holds the engine, the
+four protocol/export packages (`Autobahn.Http`, `Autobahn.WebSockets`, `Autobahn.Grpc`,
+`Autobahn.OpenTelemetry`), the CLI and the test project — all of which build from a clean
+clone. Adding a project that cannot build from a clean clone breaks the plain command for
+everyone.
 
 The tests run on **TUnit**, on Microsoft.Testing.Platform. `global.json` opts `dotnet test`
 into that runner (`"test": { "runner": "Microsoft.Testing.Platform" }`); without it the
@@ -281,6 +282,35 @@ is the file/user logger.
 - **Spectre needs a width when there is no terminal.** With output redirected it collapses
   every table to an ellipsis, which is exactly the CI-log case; `SessionRunner` sets a
   fixed width in that situation, and skips the live table entirely there.
+
+## The protocol helpers
+
+Four packages beside the engine, each with its own `.csproj` in the root solution so a plain
+`dotnet build` covers them: `Autobahn.Http` (with HAR conversion), `Autobahn.WebSockets`,
+`Autobahn.Grpc` and `Autobahn.OpenTelemetry`. They depend on the engine and never the other
+way round; the engine must stay usable with none of them installed.
+
+- **The HTTP factories live on `HttpRequest`, not on a class called `Http`.** A class with the
+  same name as its own namespace binds to the *namespace* inside anything under a shared root,
+  so `Http.Get` fails to compile in half the places it would be written — including this
+  repository's own tests. Don't reintroduce the facade.
+- **`HttpRequest` is a description, not an `HttpRequestMessage`.** One of those can only be
+  sent once; a scenario that holds a request across iterations must keep working.
+- `HttpSize` counts the HTTP/1.1 wire form: request line, status line, headers, both bodies.
+  It is an approximation and says so — it is before TLS and before HTTP/2 header compression,
+  because those happen below where any of it is visible.
+- **OTLP is not a sink coming back.** `AutobahnContext.OnInterval` is one delegate the engine
+  calls with a record it already built; it has no lifecycle and user code implements nothing.
+  It is invoked without being awaited, and a failure is logged rather than propagated — an
+  export that broke is not a reason to lose the test.
+- `AutobahnMeter` uses observable gauges rather than counters: the stats already exist as a
+  per-interval snapshot, and re-deriving deltas so a counter could be incremented would be
+  arithmetic in service of the wrong shape. Every tag is the *identity* of the thing measured;
+  a tag whose value changes each interval would make every interval its own time series.
+- `tests/Autobahn.Tests/TestServer.cs` is a real `HttpListener` on a real port, because these
+  tests are about the wire. A test that creates an `AutobahnMeter` must filter its
+  `MeterListener` by the meter's **version** — every instance shares the name, so a
+  name-only filter also picks up whatever a sibling test is publishing.
 
 ## The CLI
 

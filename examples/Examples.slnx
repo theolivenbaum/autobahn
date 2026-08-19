@@ -5,4 +5,7 @@
   <Project Path="Metrics/Metrics.csproj" />
   <Project Path="Thresholds/Thresholds.csproj" />
   <Project Path="CliScenarios/CliScenarios.csproj" />
+  <Project Path="HttpApi/HttpApi.csproj" />
+  <Project Path="../src/Autobahn.Http/Autobahn.Http.csproj" />
+  <Project Path="../src/Autobahn.OpenTelemetry/Autobahn.OpenTelemetry.csproj" />
 </Solution>

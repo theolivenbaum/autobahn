@@ -264,6 +264,7 @@ internal static class ContextResolver
             GlobalCustomSettings = Global(context)?.CustomSettings ?? string.Empty,
             EffectiveSettings = log.Settings,
             ShowEffectiveConfig = context.ShowEffectiveConfig,
+            OnInterval = context.OnInterval,
             EnableThresholdExitCode = context.EnableThresholdExitCode
         });
     }

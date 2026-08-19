@@ -98,6 +98,39 @@ internal sealed class ReportingManager : IReportingManager
     {
         TestHostConsole.LiveStatusTable.PrintIntervalProgress(_dep, duration, statsTask.Result);
         CheckThresholds(duration, statsTask, metrics);
+        NotifyObserver(duration, statsTask.Result, metrics);
+    }
+
+    /// <summary>
+    /// Hands the closed interval to whoever asked for it, without waiting.
+    /// </summary>
+    /// <remarks>
+    /// Not awaited on purpose: an observer shipping the numbers over a network must not be
+    /// able to hold up the next tick, let alone the run. A failure is logged and the run
+    /// carries on - an export that broke is not a reason to lose the test.
+    /// </remarks>
+    private void NotifyObserver(TimeSpan duration, ScenarioStats[] scenarioStats, MetricStats[] metrics)
+    {
+        if (_sessionArgs.OnInterval is not { } observe) return;
+
+        var record = new TimeLineHistoryRecord
+        {
+            ScenarioStats = scenarioStats,
+            Metrics = metrics,
+            Duration = duration
+        };
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await observe(record).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _dep.Logger.ZLogError($"The interval observer failed: {ex}");
+            }
+        });
     }
 
     private void CheckThresholds(TimeSpan duration, Task<ScenarioStats[]> statsTask, MetricStats[] metrics)
