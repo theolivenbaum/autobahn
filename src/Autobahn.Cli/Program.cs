@@ -35,6 +35,7 @@ internal static class Program
                 "list" => await Commands.List(options).ConfigureAwait(false),
                 "run" => await Commands.Run(options).ConfigureAwait(false),
                 "record" => await RecordCommand.Run(options).ConfigureAwait(false),
+                "export" => Commands.Export(options),
                 _ => Help()
             };
         }
@@ -67,6 +68,8 @@ internal static class Program
               autobahn run    <file> [options]  Run the scenarios a file exposes.
               autobahn list   <file>            List them without running anything.
               autobahn record <url>  [options]  Learn a scenario by watching a browser session.
+              autobahn export <run.json> [-o <file>]
+                                                Render a finished run as one self-contained page.
 
             <file> is either a built assembly, or a single C# script (.cs / .csx) that
             returns a scenario or a list of them as its last expression. In an assembly a
@@ -97,6 +100,14 @@ internal static class Program
               -h, --help                 Show this help.
               -v, --version              Show the version.
 
+            Options for 'run', for the live web view:
+                  --ui                   Serve it. On by default at a terminal, off without one.
+                  --no-ui                Do not serve it.
+                  --ui-port <port>       The port. 0, the default, picks a free one.
+                  --ui-public            Serve on every interface rather than loopback. Loud on
+                                         purpose: this surface can stop the run.
+                  --ui-open              Open the printed URL in a browser.
+
             Options for 'record':
               -n, --name <path>          Where the generated file goes.
                   --namespace <ns>       Emit a class in this namespace instead of a .csx script.
@@ -118,7 +129,9 @@ internal static class Program
               1  the command line, the file or the run itself was wrong
               2  the run finished and a threshold failed
 
-            The terminal dashboard and the web UI are not wired up yet; see TODO.md section 8.
+            'export' renders the same web view against a run artifact - the .json report - as
+            a single HTML file with no server and no network. It is large, because it carries
+            the whole application: it is for sharing a run, not for replacing the reports.
             """);
 
         return AutobahnExitCode.Ok;

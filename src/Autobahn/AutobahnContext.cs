@@ -25,6 +25,17 @@ public sealed record AutobahnContext
     /// <summary>Replaces Autobahn's default file logging when set.</summary>
     public Action<ILoggingBuilder>? ConfigureLogging { get; init; }
 
+    /// <summary>
+    /// Providers added beside whatever logging is already configured, rather than instead of
+    /// it.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="ConfigureLogging"/> replaces the default file log, which is right when the
+    /// caller wants their own logging and wrong when something merely wants to *watch* - the
+    /// live UI tails the run's log without meaning to stop it being written to disk.
+    /// </remarks>
+    public IReadOnlyList<ILoggerProvider> AdditionalLoggerProviders { get; init; } = [];
+
     public required ReportingContext Reporting { get; init; }
     public required IReadOnlyList<IWorkerPlugin> WorkerPlugins { get; init; }
     public required bool EnableHintsAnalyzer { get; init; }
@@ -80,6 +91,17 @@ public sealed record AutobahnContext
     /// </remarks>
     public Func<Stats.TimeLineHistoryRecord, Task>? OnInterval { get; init; }
 
+    /// <summary>
+    /// Called once, with the run as it was finally resolved, before any load is generated.
+    /// </summary>
+    /// <remarks>
+    /// The companion to <see cref="OnInterval"/>: that one carries what happened, this one
+    /// carries what is about to be attempted. Anything watching a run needs both, and only the
+    /// engine knows what the JSON config, the environment and the command line settled on
+    /// between them.
+    /// </remarks>
+    public Func<Stats.SessionStartInfo, Task>? OnSessionStart { get; init; }
+
     public static AutobahnContext Empty { get; } = new()
     {
         TestSuite = Constants.DefaultTestSuite,
@@ -106,6 +128,7 @@ public sealed record AutobahnContext
         Thresholds = [],
         EnableThresholdExitCode = true,
         ShowEffectiveConfig = false,
-        OnInterval = null
+        OnInterval = null,
+        OnSessionStart = null
     };
 }

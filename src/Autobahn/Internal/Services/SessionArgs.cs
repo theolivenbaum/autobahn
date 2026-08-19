@@ -49,6 +49,9 @@ internal sealed record SessionArgs
     /// <summary>Called with each closed interval's numbers, or null.</summary>
     public Func<TimeLineHistoryRecord, Task>? OnInterval { get; init; }
 
+    /// <summary>Called once with the resolved run, before any load is generated, or null.</summary>
+    public Func<SessionStartInfo, Task>? OnSessionStart { get; init; }
+
     public static SessionArgs Empty { get; } = new()
     {
         TestInfo = TestInfo.Empty,

@@ -74,6 +74,34 @@ jobs:
       - name: Build the examples
         run: dotnet build examples/Examples.slnx --configuration Release
 
+  ui:
+    name: Web UI build
+    runs-on: ubuntu-latest
+
+    # Its own job because it needs a compiler nothing else does. The engine and the
+    # CLI must keep building without it - that is the whole reason the UI is not in
+    # the root solution - so this job proves the UI still compiles rather than being
+    # a step the rest of the build depends on.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Install the Transpose compiler
+        run: |
+          dotnet tool update --global Transpose.Compiler
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: Build and stage the UI
+        run: ./scripts/build-ui.sh Release
+
+      # With the assets staged, this is the CLI as it actually ships: the UI is an
+      # embedded resource, and a build that cannot embed it is a broken release.
+      - name: Build the CLI with the UI embedded
+        run: dotnet build src/Autobahn.Cli/Autobahn.Cli.csproj --configuration Release
+
   quality:
     name: Format and vulnerabilities
     runs-on: ubuntu-latest

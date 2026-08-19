@@ -60,6 +60,10 @@ internal static class LoggerBuilder
                 AttachDefaultFileLogger(builder, settings.Folder);
             }
 
+            // Added rather than substituted, so something that only wants to watch the log
+            // does not stop it being written.
+            foreach (var provider in context.AdditionalLoggerProviders) builder.AddProvider(provider);
+
             // The infra config can raise or lower levels per category without touching code.
             if (context.InfraConfig?.GetSection("Logging") is { } loggingSection && loggingSection.Exists())
                 builder.AddConfiguration(loggingSection);

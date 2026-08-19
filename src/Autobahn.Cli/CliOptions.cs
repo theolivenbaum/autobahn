@@ -6,7 +6,10 @@ namespace Autobahn.Cli;
 /// <summary>What the command line asked for.</summary>
 internal sealed record CliOptions
 {
-    /// <summary>The verb: <c>run</c>, <c>list</c>, <c>record</c>, <c>help</c> or <c>version</c>.</summary>
+    /// <summary>
+    /// The verb: <c>run</c>, <c>list</c>, <c>record</c>, <c>export</c>, <c>help</c> or
+    /// <c>version</c>.
+    /// </summary>
     public required string Command { get; init; }
 
     /// <summary>The assembly or script holding the scenarios.</summary>
@@ -25,6 +28,9 @@ internal sealed record CliOptions
     public bool ShowConfig { get; init; }
     public bool NoRuntimeMetrics { get; init; }
     public bool NoReports { get; init; }
+
+    /// <summary>Where <c>export</c> writes its page. Null puts it beside the artifact.</summary>
+    public string? OutputPath { get; init; }
 
     // record only.
 
@@ -55,6 +61,32 @@ internal sealed record CliOptions
 
     /// <summary>Keeps the browser's own user-agent and sec-* headers in the recording.</summary>
     public bool KeepBrowserHeaders { get; init; }
+
+    // run only: the live UI.
+
+    /// <summary>
+    /// Serves the live web UI beside the run.
+    /// </summary>
+    /// <remarks>
+    /// Null follows the terminal: on when there is one, off when there is not, because CI is
+    /// the case where nobody is going to open it and the port is a liability.
+    /// </remarks>
+    public bool? Ui { get; init; }
+
+    /// <summary>The port to serve on. 0 picks a free one.</summary>
+    public int UiPort { get; init; }
+
+    /// <summary>
+    /// Serves on every interface rather than loopback.
+    /// </summary>
+    /// <remarks>
+    /// Its own flag, and a loud one: this surface can stop the run, and that is not something
+    /// to put on 0.0.0.0 by accident.
+    /// </remarks>
+    public bool UiPublic { get; init; }
+
+    /// <summary>Opens the printed URL once the server is up.</summary>
+    public bool UiOpen { get; init; }
 
     /// <summary>Set when the command line could not be understood; nothing else is valid then.</summary>
     public string? Error { get; init; }

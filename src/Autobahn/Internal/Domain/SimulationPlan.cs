@@ -191,7 +191,7 @@ internal static class SimulationPlan
 
     /// <summary>The load level to report: constant actors for closed models, injected actors for open ones.</summary>
     public static LoadSimulationStats CreateSimulationStats(
-        LoadSimulation simulation, int constantActorCount, int oneTimeActorCount)
+        LoadSimulation simulation, int constantActorCount, int oneTimeActorCount, int workingActorCount = 0)
     {
         var value = simulation switch
         {
@@ -206,7 +206,12 @@ internal static class SimulationPlan
             _ => throw new NotSupportedException($"Unknown load simulation: {simulation.GetType().Name}")
         };
 
-        return new LoadSimulationStats { SimulationName = GetSimulationName(simulation), Value = value };
+        return new LoadSimulationStats
+        {
+            SimulationName = GetSimulationName(simulation),
+            Value = value,
+            ActualCopies = workingActorCount
+        };
     }
 
     /// <summary>

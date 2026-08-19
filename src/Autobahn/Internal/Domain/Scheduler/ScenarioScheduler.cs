@@ -119,7 +119,20 @@ internal sealed class ScenarioScheduler : IDisposable
         SimulationPlan.CreateSimulationStats(
             _currentSimulation.Value,
             _constantScheduler.ScheduledActorCount,
-            _oneTimeScheduler.ScheduledActorCount);
+            _oneTimeScheduler.ScheduledActorCount,
+            WorkingActorCount());
+
+    /// <summary>
+    /// How many copies are mid-iteration right now, across both actor pools.
+    /// </summary>
+    /// <remarks>
+    /// Counted rather than tracked: an actor's <c>Working</c> flag is already the truth, and a
+    /// counter incremented and decremented on the hot path would cost every iteration
+    /// something to answer a question asked once per reporting interval.
+    /// </remarks>
+    private int WorkingActorCount() =>
+        ScenarioActorPool.GetWorkingActors(_constantScheduler.AvailableActors).Count()
+        + ScenarioActorPool.GetWorkingActors(_oneTimeScheduler.AvailableActors).Count();
 
     private void Stop()
     {

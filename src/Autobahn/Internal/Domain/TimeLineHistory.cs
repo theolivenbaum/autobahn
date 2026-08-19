@@ -7,7 +7,8 @@ internal static class TimeLineHistory
 {
     public static TimeLineHistoryRecord[] Create(
         IEnumerable<IReadOnlyDictionary<TimeSpan, ScenarioStats>> schedulersRealtimeStats,
-        IReadOnlyDictionary<TimeSpan, MetricStats[]>? intervalMetrics = null) =>
+        IReadOnlyDictionary<TimeSpan, MetricStats[]>? intervalMetrics = null,
+        IReadOnlyDictionary<TimeSpan, ThresholdResult[]>? intervalThresholds = null) =>
         schedulersRealtimeStats
             .SelectMany(x => x)
             .GroupBy(x => x.Key)
@@ -15,6 +16,7 @@ internal static class TimeLineHistory
             {
                 ScenarioStats = g.Select(x => x.Value).ToArray(),
                 Metrics = intervalMetrics?.GetValueOrDefault(g.Key) ?? [],
+                Thresholds = intervalThresholds?.GetValueOrDefault(g.Key) ?? [],
                 Duration = g.Key
             })
             .OrderBy(x => x.Duration)

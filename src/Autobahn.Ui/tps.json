@@ -1,0 +1,12 @@
+{
+    "output": "$(OutDir)/tps/",
+    "fileName": "app.js",
+    "html": {
+        "disabled": false,
+        "title": "Autobahn"
+    },
+    "reflection": {
+        "disabled": false,
+        "target": "inline"
+    }
+}

@@ -344,3 +344,6 @@ reports/
 TestResults/
 BenchmarkDotNet.Artifacts/
 artifacts/
+
+# The compiled Tesserae UI, staged into the CLI by scripts/build-ui.sh. Built, not authored.
+src/Autobahn.Cli/Ui/wwwroot/

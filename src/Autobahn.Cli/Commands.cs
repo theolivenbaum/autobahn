@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using System.Net;
+using Autobahn.Cli.Ui;
 using Autobahn.Stats;
 
 namespace Autobahn.Cli;
@@ -37,14 +40,161 @@ internal static class Commands
     public static async Task<int> Run(CliOptions options)
     {
         var scenarios = await LoadScenarios(options.Source!).ConfigureAwait(false);
-
         var context = Apply(options, AutobahnRunner.RegisterScenarios([.. scenarios]));
 
-        var stats = context.Run();
+        if (!WantsUi(options)) return Verdict(context.Run());
 
-        // The run has already set the exit code if a threshold failed; saying so again here
-        // would double up on the message the reports carry.
-        return stats.AllThresholdsPassed ? AutobahnExitCode.Ok : AutobahnExitCode.ThresholdFailed;
+        await using var ui = await UiSession.StartAsync(UiSettings(options), CancellationToken.None)
+            .ConfigureAwait(false);
+
+        Announce(ui.Url, options);
+
+        var stats = ui.Attach(context, scenarios).Run();
+
+        // Published before the process can exit, so a page watching ends on the run's last
+        // word rather than on whatever interval happened to be its last.
+        ui.Complete(stats);
+
+        await WaitBeforeClosing(ui.Url).ConfigureAwait(false);
+
+        return Verdict(stats);
+    }
+
+    /// <summary>
+    /// Renders a finished run as one self-contained page.
+    /// </summary>
+    /// <remarks>
+    /// The same application the live view is, reading a snapshot the exporter wrote into the
+    /// document rather than one arriving over a socket - so a finished run and a running one
+    /// are looked at through the same screens and cannot disagree about what happened.
+    /// </remarks>
+    public static int Export(CliOptions options)
+    {
+        if (options.Source is null)
+        {
+            Console.Error.WriteLine("autobahn export needs a run artifact: the .json report a run writes.");
+            return AutobahnExitCode.Error;
+        }
+
+        var written = StaticExport.Write(options.Source, options.OutputPath);
+        if (written is null) return AutobahnExitCode.Error;
+
+        var size = new FileInfo(written).Length;
+
+        Console.WriteLine($"Wrote {written} ({size / 1024 / 1024} MB).");
+        Console.WriteLine("It is one file: open it anywhere, no server and no network.");
+
+        return AutobahnExitCode.Ok;
+    }
+
+    // The run has already set the exit code if a threshold failed; saying so again in words
+    // would double up on the message the reports carry.
+    private static int Verdict(SessionStats stats) =>
+        stats.AllThresholdsPassed ? AutobahnExitCode.Ok : AutobahnExitCode.ThresholdFailed;
+
+    /// <summary>
+    /// Holds the server open after the run so the final state can be read.
+    /// </summary>
+    /// <remarks>
+    /// A run that ends the instant its plan does takes the page with it, and the last minute
+    /// of a load test is often the interesting one. So an interactive terminal waits for
+    /// Ctrl+C; anything else exits, because a CI job hanging until it is killed is worse than
+    /// a page nobody was looking at.
+    /// </remarks>
+    private static async Task WaitBeforeClosing(string url)
+    {
+        if (!HasTerminal()) return;
+
+        using var closed = new CancellationTokenSource();
+
+        void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
+        {
+            e.Cancel = true;
+            closed.Cancel();
+        }
+
+        Console.CancelKeyPress += OnCancelKeyPress;
+
+        try
+        {
+            Console.WriteLine();
+            Console.WriteLine($"The run has finished. The live view is still up at {url}");
+            Console.WriteLine("Press Ctrl+C to close it.");
+
+            await Task.Delay(Timeout.InfiniteTimeSpan, closed.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            // Ctrl+C, which is how this is meant to end.
+        }
+        finally
+        {
+            Console.CancelKeyPress -= OnCancelKeyPress;
+        }
+    }
+
+    /// <summary>
+    /// Whether to serve the live UI. Unset follows the terminal.
+    /// </summary>
+    /// <remarks>
+    /// On for an interactive terminal, off without one. CI is the case where nobody is going
+    /// to open it and an extra listening port is a liability rather than a feature.
+    /// </remarks>
+    private static bool WantsUi(CliOptions options) => options.Ui ?? HasTerminal();
+
+    private static bool HasTerminal()
+    {
+        try
+        {
+            return !Console.IsOutputRedirected && Console.WindowHeight > 0;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static UiOptions UiSettings(CliOptions options) => new()
+    {
+        Port = options.UiPort,
+        BindAddress = options.UiPublic ? IPAddress.Any : IPAddress.Loopback,
+        OpenBrowser = options.UiOpen
+    };
+
+    private static void Announce(string url, CliOptions options)
+    {
+        if (options.UiPublic)
+        {
+            Console.WriteLine();
+            Console.WriteLine("WARNING: the live UI is bound to every interface, and it can stop this run.");
+            Console.WriteLine("         Anyone who can reach this machine and has the URL can use it.");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine($"Live view: {url}");
+        Console.WriteLine();
+
+        if (options.UiOpen) OpenBrowser(url);
+    }
+
+    /// <summary>
+    /// Opens the URL in whatever the platform considers a browser.
+    /// </summary>
+    /// <remarks>
+    /// Best-effort by design. A headless box, a locked-down desktop or a missing handler are
+    /// all normal, and none of them is a reason to fail a load test - the URL is on screen
+    /// either way.
+    /// </remarks>
+    private static void OpenBrowser(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo(url) { UseShellExecute = true })?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"(Could not open a browser: {ex.Message})");
+        }
     }
 
     /// <summary>

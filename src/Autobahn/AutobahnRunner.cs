@@ -125,6 +125,18 @@ public static class AutobahnRunner
         context with { ConfigureLogging = configureLogging };
 
     /// <summary>
+    /// Adds a logging provider beside whatever logging is already configured, rather than
+    /// instead of it - which is what <see cref="WithLogging"/> does.
+    /// </summary>
+    /// <remarks>
+    /// For something that wants to watch the run's log without taking it over: a live view
+    /// tailing it, a test asserting on it, an in-memory buffer. The rolling file log keeps
+    /// being written either way.
+    /// </remarks>
+    public static AutobahnContext WithLoggerProvider(this AutobahnContext context, ILoggerProvider provider) =>
+        context with { AdditionalLoggerProviders = [.. context.AdditionalLoggerProviders, provider] };
+
+    /// <summary>
     /// Turns on the hints analyzer, which inspects the final statistics and points out ways
     /// the test was under-instrumented. The default is off.
     /// </summary>
@@ -158,6 +170,20 @@ public static class AutobahnRunner
     public static AutobahnContext WithIntervalObserver(
         this AutobahnContext context, Func<Stats.TimeLineHistoryRecord, Task> observer) =>
         context with { OnInterval = observer };
+
+    /// <summary>
+    /// Calls back once with the run as it was finally resolved - the effective settings and
+    /// where each came from, the scenarios that will run and the plans they will run - before
+    /// any load is generated.
+    /// </summary>
+    /// <remarks>
+    /// Awaited, unlike the interval observer: this happens once, before the clock starts, so
+    /// there is no measurement for it to distort and a watcher that needs to be ready before
+    /// the first interval can be. A failure is logged and the run proceeds.
+    /// </remarks>
+    public static AutobahnContext WithSessionStartObserver(
+        this AutobahnContext context, Func<Stats.SessionStartInfo, Task> observer) =>
+        context with { OnSessionStart = observer };
 
     /// <summary>
     /// Prints every effective setting and the layer its value came from before the run starts,

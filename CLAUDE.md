@@ -82,16 +82,18 @@ Not in the root build:
 
 - `examples/Examples.slnx` — the examples. Kept separate so a routine build is the product,
   not the samples. Build it explicitly: `dotnet build examples/Examples.slnx`.
-- `src/Autobahn.Ui/Autobahn.Ui.slnx` — the web UI and its contracts. Building it needs the
-  Transpose compiler installed as a global tool, which a clean clone does not have.
+- `src/Autobahn.Ui/Autobahn.Ui.slnx` — the web UI. Building it needs the Transpose compiler
+  installed as a global tool, which a clean clone does not have; `scripts/build-ui.sh` does
+  it and stages the result into the CLI. See "The web UI" below.
 - `performance/Performance.slnx` — the BenchmarkDotNet project. Run it before and after any
   change to the scheduler or the stats actor; `performance/Autobahn.Benchmarks/README.md`
   has the baseline and the command.
 
-**CI is off.** There are no workflows at all: the inherited ones built a solution that no
-longer exists and published under the upstream package identity, so they were deleted
-rather than parked. Nothing runs on push, and the local commands above are the only check
-there is. Writing the replacement is a roadmap item (see TODO.md).
+**CI** is `.github/workflows/ci.yml`: build, tests, the examples, the web UI, `dotnet
+format --verify-no-changes`, a vulnerable-package check and a pack. A pull request gets the
+fast test subset and `main` gets the whole suite, because a slow gate is a gate people learn
+to ignore. Publishing is `release.yml` and fires on a `v*` tag only - the inherited workflow
+published on a push to main, under a package identity this fork does not own.
 
 ## Architecture
 
@@ -400,10 +402,72 @@ data-driven cases use `[Arguments(...)]` and `[MethodDataSource(...)]`.
   as explicit `[Arguments]` cases plus seeded random sweeps — same invariants, no
   `FSharp.Core` in the test project.
 
-## The web UI (planned)
+## The web UI
 
-A Tesserae-based live web interface, served by the Autobahn CLI over Kestrel from embedded
-resources, is specified in detail in [TODO.md](TODO.md). The projects exist as empty
-skeletons (`src/Autobahn.Ui`, `src/Autobahn.Ui.Contracts`) with their own solution; the CLI
-(`src/Autobahn.Cli`) is an entry point and an argument surface. The engine must stay
-usable, and fully headless, without any of them.
+A live web interface for a running test: `autobahn run --ui` starts Kestrel beside the run
+and prints a URL. The page is a Tesserae application written in C# and compiled to
+JavaScript by Transpose, embedded in the CLI assembly. TODO.md section 8 is the
+specification; the engine must stay usable, and fully headless, without any of it.
+
+```
+src/Autobahn.Ui.Contracts/     the wire DTOs, multi-targeted netstandard2.0 + net10.0
+src/Autobahn.Ui/src/           the Tesserae application
+  App.cs, Shell.cs             entry point, the rail and the run's header
+  RunClient.cs                 snapshot, socket, backfill, control
+  DashboardState.cs            everything the views bind to, as observables
+  Widgets.cs, Format.cs        the shapes and the number formatting
+  Views/                       one file per screen
+src/Autobahn.Cli/Ui/           the host: UiServer, UiSession, RunFeed, FrameBuilder, PastRuns
+```
+
+**The run must not be able to tell whether anyone is watching.** Everything the UI reads
+comes out of a `RunFeed` the run writes to once per reporting interval; a slow client drops
+frames from a bounded queue rather than applying back-pressure. The engine seams the host
+uses are `WithSessionStartObserver` (once, with the resolved run) and `WithIntervalObserver`
+(the record the reporting manager already built) - not hooks the engine grew for a UI.
+
+### Building it
+
+Not part of `dotnet build`: the Transpose compiler is a global tool a clean clone does not
+have, and `UiAssets` serves an explanatory page when the assets are absent.
+
+```bash
+dotnet tool update --global Transpose.Compiler
+export PATH="$PATH:$HOME/.dotnet/tools"
+./scripts/build-ui.sh Release        # compiles the app and stages it into the CLI
+dotnet build src/Autobahn.Cli/Autobahn.Cli.csproj
+```
+
+The staged output under `src/Autobahn.Cli/Ui/wwwroot/` is gitignored - it is built, not
+authored. The script gzips every file, because an assembly stores an embedded resource
+uncompressed and this is twelve megabytes of JavaScript, CSS and icon fonts.
+
+### Things that will bite you in the UI
+
+These are all consequences of one end being a browser, and every one of them fails
+*silently* rather than loudly.
+
+- **The DTOs are compiled into the UI assembly, not referenced.** `Autobahn.Ui.csproj` links
+  `../Autobahn.Ui.Contracts/*.cs` rather than taking a project reference, because Transpose
+  emits reflection metadata only for the assembly it is compiling - and without metadata,
+  Newtonsoft deserializes every record to its own defaults and reports no error. Both ends
+  still compile the same source, which is the point of the contracts project.
+- **Every DTO declares its own parameterless constructor.** A record gets one anyway, but the
+  compiler marks it synthetic and the deserializer skips synthetic members.
+- **The client deserializes with `ObjectCreationHandling.Replace`.** The default reuses what a
+  property already holds, so a collection initialized to `[]` stays empty for every document.
+- **No `long` on the wire, and no `DateTimeOffset`.** The transpiled BCL models a 64-bit
+  integer as an object, and JSON cannot say which numbers are those; counts and epoch
+  milliseconds are `double`. Times are milliseconds since the epoch.
+- **Enum values are serialized in their declared casing while property names are camelCase.**
+  The client parses enums by name and that parse is case-sensitive.
+- **`HttpClient` needs an absolute URI.** Transpose implements it over fetch, and a relative
+  path throws rather than resolving against the page.
+- **A delegate interpolated into `Script.Write` is re-bound at the call site.** That is why the
+  WebSocket handlers use the typed `Transpose.Core.dom.WebSocket` binding rather than
+  assigning `onopen` from a string.
+- **`Series(params ChartSeries[])` replaces the chart's series rather than appending.** Two
+  calls leave only the second one's data, and the axis collapses onto it.
+- **The token is issued as a cookie by the first authorised request.** A browser does not
+  carry a query string onto the sub-resources a page asks for, so the token in the printed
+  URL authorises the document and nothing in it.

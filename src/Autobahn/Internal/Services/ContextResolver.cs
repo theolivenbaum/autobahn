@@ -265,6 +265,7 @@ internal static class ContextResolver
             EffectiveSettings = log.Settings,
             ShowEffectiveConfig = context.ShowEffectiveConfig,
             OnInterval = context.OnInterval,
+            OnSessionStart = context.OnSessionStart,
             EnableThresholdExitCode = context.EnableThresholdExitCode
         });
     }

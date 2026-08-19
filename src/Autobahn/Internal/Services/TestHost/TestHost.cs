@@ -61,6 +61,8 @@ internal sealed class TestHost : IDisposable
 
         var initializedScenarios = initResult.Value;
 
+        await NotifySessionStart(sessionArgs).ConfigureAwait(false);
+
         var warmUpScenarios = ScenarioFactory.GetScenariosForWarmUp(initializedScenarios);
         if (warmUpScenarios.Count > 0)
         {
@@ -99,6 +101,55 @@ internal sealed class TestHost : IDisposable
             .ConfigureAwait(false);
 
         return Result<SessionResult>.Ok(sessionResult);
+    }
+
+    /// <summary>
+    /// Tells whoever asked what this run turned out to be, once the scenarios are initialized
+    /// and before any load is generated.
+    /// </summary>
+    /// <remarks>
+    /// After init rather than before it, because the plans are only resolved by then: a
+    /// weighted scenario's simulations are rescaled during initialization, and a descriptor
+    /// taken any earlier would describe a plan that is not the one about to run.
+    ///
+    /// Awaited, unlike the interval observer: nothing is being measured yet, so there is no
+    /// timing for it to distort, and a watcher that has to be ready before the first interval
+    /// closes needs the chance to be. A failure is logged and the run proceeds - being watched
+    /// is never a reason to lose a test.
+    /// </remarks>
+    private async Task NotifySessionStart(SessionArgs sessionArgs)
+    {
+        if (sessionArgs.OnSessionStart is not { } observe) return;
+
+        try
+        {
+            await observe(new SessionStartInfo
+            {
+                TestInfo = sessionArgs.TestInfo,
+                HostInfo = GetCurrentHostInfo(),
+                ReportingInterval = sessionArgs.ReportingInterval,
+                ReportFolder = sessionArgs.ReportFolder,
+                EffectiveSettings = sessionArgs.EffectiveSettings,
+                Thresholds = sessionArgs.Thresholds,
+                Scenarios = _targetScenarios
+                    .Select(scn => new ScenarioStartInfo
+                    {
+                        ScenarioName = scn.ScenarioName,
+                        LoadSimulations = scn.LoadSimulations.Select(x => x.Value).ToArray(),
+                        // A counted segment has no length to promise, and a progress bar that
+                        // invents one is worse than no progress bar.
+                        PlannedDuration = scn.HasCountedSimulations ? null : scn.PlanedDuration,
+                        WarmUpDuration = scn.WarmUpDuration,
+                        MaxCopies = scn.MaxCopiesCount,
+                        Weight = scn.Weight
+                    })
+                    .ToArray()
+            }).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _dep.LogError($"The session-start observer failed: {ex.Message}");
+        }
     }
 
     public Task<Result<List<RuntimeScenario>>> StartInit(SessionArgs sessionArgs)

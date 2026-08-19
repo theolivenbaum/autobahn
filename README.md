@@ -351,7 +351,37 @@ Exit codes are the contract: `0` ran and every threshold passed, `1` the command
 run was wrong, `2` ran and a threshold failed. `AutobahnExitCode` has the same three for a
 program setting them itself.
 
-The terminal dashboard and the web UI are not wired up yet — see [TODO.md](TODO.md) section 8.
+### Watching a run in a browser
+
+`autobahn run --ui` serves a live web view beside the run and prints its URL. It is on by
+default at a terminal and off without one, because CI is the case where nobody is going to
+open it and the port is a liability.
+
+```bash
+autobahn run ./bin/Release/net10.0/MyTests.dll --ui --ui-open
+```
+
+It shows the run's throughput, latency percentiles, scheduled-against-actual concurrency,
+status codes and the load generator's own CPU, memory, thread pool and sockets, all over
+time; a tab per scenario with its steps; failures grouped by what they were and when they
+happened; every threshold with a pass/fail bar per interval; the load plan with a playhead;
+the effective configuration and where each value came from; the other runs in the report
+folder with a delta table against any two of them; and the reports the run wrote. Number keys
+jump between sections, `.` freezes the live view and `/` finds the search box.
+
+It binds to loopback, requires a per-run token, and asks for confirmation before stopping the
+run. `--ui-public` serves on every interface and says so loudly: this surface can stop a run.
+
+**The run does not know whether anyone is watching.** No client, twenty clients, a client on
+a slow link, the tab closed mid-run: the timing, the results and the exit code are identical.
+
+`autobahn export <run.json>` renders the same view against a finished run's artifact as one
+self-contained HTML file — no server, no network, one file to send someone. It is large (it
+carries the whole application), so it is a command rather than a report format.
+
+The web view is built by the Transpose compiler, which a clean clone does not have. A build
+without it serves a page saying so; `scripts/build-ui.sh` is the one command that changes
+that. See [CLAUDE.md](CLAUDE.md).
 
 ## Protocol helpers
 
@@ -700,6 +730,9 @@ The examples and the web UI have their own solutions and are not part of the roo
 
 ```bash
 dotnet build examples/Examples.slnx
+
+dotnet tool update --global Transpose.Compiler   # the web UI needs this
+./scripts/build-ui.sh Release                    # and stages it into the CLI
 ```
 
 ## Repository layout
@@ -712,7 +745,7 @@ src/Autobahn.Http/         the HTTP helper and HAR conversion
 src/Autobahn.WebSockets/   the WebSocket helper
 src/Autobahn.Grpc/         the gRPC helper
 src/Autobahn.OpenTelemetry/ OTLP export
-src/Autobahn.Ui/           the Tesserae web UI (not started; own solution)
+src/Autobahn.Ui/           the Tesserae web UI (own solution; needs Transpose)
 src/Autobahn.Ui.Contracts/ wire DTOs shared by the host and the UI
 tests/Autobahn.Tests/      the test suite
 examples/                  runnable examples (own solution)
@@ -725,8 +758,8 @@ when changing the engine.
 
 ## Roadmap
 
-[TODO.md](TODO.md) — features, fixes and improvements to bring in, plus the design of the
-Tesserae-based web UI that the CLI will host.
+[TODO.md](TODO.md) — features, fixes and improvements to bring in, and the specification the
+web UI was built from, with the places the implementation departed from it recorded.
 
 ## License
 

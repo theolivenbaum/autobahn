@@ -39,6 +39,11 @@ internal sealed class ReportingManager : IReportingManager
     // are so the two line up in the timeline.
     private readonly ConcurrentDictionary<TimeSpan, MetricStats[]> _intervalMetrics = new();
 
+    // And where each threshold stood when that interval was checked. A rule that passed, failed
+    // for a minute and recovered is a different run from one that failed at the end, and the
+    // timeline is the only place that difference survives.
+    private readonly ConcurrentDictionary<TimeSpan, ThresholdResult[]> _intervalThresholds = new();
+
     private TimeSpan _curDuration = TimeSpan.Zero;
 
     /// <summary>
@@ -98,7 +103,13 @@ internal sealed class ReportingManager : IReportingManager
     {
         TestHostConsole.LiveStatusTable.PrintIntervalProgress(_dep, duration, statsTask.Result);
         CheckThresholds(duration, statsTask, metrics);
-        NotifyObserver(duration, statsTask.Result, metrics);
+
+        // After the check, not before: the observer's copy of this interval should say where
+        // the thresholds stood at the end of it, which is what was just worked out.
+        var thresholds = Thresholds.IsEmpty ? [] : Thresholds.GetResults();
+        _intervalThresholds[duration] = thresholds;
+
+        NotifyObserver(duration, statsTask.Result, metrics, thresholds);
     }
 
     /// <summary>
@@ -109,7 +120,8 @@ internal sealed class ReportingManager : IReportingManager
     /// able to hold up the next tick, let alone the run. A failure is logged and the run
     /// carries on - an export that broke is not a reason to lose the test.
     /// </remarks>
-    private void NotifyObserver(TimeSpan duration, ScenarioStats[] scenarioStats, MetricStats[] metrics)
+    private void NotifyObserver(
+        TimeSpan duration, ScenarioStats[] scenarioStats, MetricStats[] metrics, ThresholdResult[] thresholds)
     {
         if (_sessionArgs.OnInterval is not { } observe) return;
 
@@ -117,6 +129,7 @@ internal sealed class ReportingManager : IReportingManager
         {
             ScenarioStats = scenarioStats,
             Metrics = metrics,
+            Thresholds = thresholds,
             Duration = duration
         };
 
@@ -186,7 +199,8 @@ internal sealed class ReportingManager : IReportingManager
 
     public async Task<SessionResult> GetSessionResult(HostInfo hostInfo)
     {
-        var history = TimeLineHistory.Create(_schedulers.Select(x => x.AllRealtimeStats), _intervalMetrics);
+        var history = TimeLineHistory.Create(
+            _schedulers.Select(x => x.AllRealtimeStats), _intervalMetrics, _intervalThresholds);
         var finalStats = await GetFinalStats(hostInfo).ConfigureAwait(false);
         var hints = GetHints(finalStats);
 
