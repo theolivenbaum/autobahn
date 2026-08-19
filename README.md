@@ -314,9 +314,10 @@ builds the run around them so every option lives on the command line.
 ```bash
 dotnet tool install -g Autobahn.Cli
 
-autobahn list ./bin/Release/net10.0/LoadTests.dll
-autobahn run  ./bin/Release/net10.0/LoadTests.dll -t checkout -f Json,Md -o ./reports
-autobahn run  ./checkout.csx --show-config --reporting-interval 00:00:10
+autobahn list   ./bin/Release/net10.0/LoadTests.dll
+autobahn run    ./bin/Release/net10.0/LoadTests.dll -t checkout -f Json,Md -o ./reports
+autobahn run    ./checkout.csx --show-config --reporting-interval 00:00:10
+autobahn record https://shop.example.com    # learn a scenario from a browser session
 ```
 
 **From an assembly**: a scenario source is a public static property, or a public static
@@ -388,11 +389,51 @@ once, so a scenario reusing it would fail on the second iteration.
   (`-201`) and from the iteration's own timeout.
 - `.WithTracing()` logs the request and the answer while you work out why a test is failing.
 
-**HAR conversion** turns a recorded browser session into a starting point:
+### Learning a test from a browser session
+
+The fastest way to a realistic test is not to write it. `autobahn record` opens a real
+browser, watches every request the page makes, and writes the scenario source:
+
+```bash
+autobahn record https://shop.example.com          # use the site, then close the window
+autobahn run    shop_example_com.csx --out ./reports
+```
+
+What comes out is a C# file you own and edit — not a recording the engine replays:
+
+```csharp
+var scenario = Scenario.Create("shop_example_com", async context =>
+    {
+        await Step.Run("get_api_products", context, () => client.Send(
+            HttpRequest.Get("/api/products"), context));
+
+        return await Step.Run("post_api_basket", context, () => client.Send(
+            HttpRequest.Post("/api/basket")
+                // TODO: this body was recorded once - drive it from a Feed.
+                .WithStringBody(@"{""sku"":""abc""}", "application/json"),
+            context));
+    })
+```
+
+Static assets, third-party requests and the browser's own `user-agent`/`sec-*` headers are
+filtered out; the recording's cookies and bearer tokens are dropped on purpose, because they
+belong to one session. Every generated file carries a header saying exactly what still has to
+be replaced before it measures anything.
+
+`--namespace MyTests` emits a `[ScenarioSource]` class instead of a script. `--headless`
+captures just the page load. `--browser-path` uses a Chromium the machine already has.
+
+This deliberately replaces *browser-driven* load testing. Running browsers under load makes
+the generator the bottleneck and measures the generator — a machine that can drive twenty
+browsers cannot tell you what a service does at two thousand users. Learn from one session,
+then hammer with an HTTP client.
+
+**From an existing HAR**, without a browser:
 
 ```csharp
 var requests = Har.FromFile("session.har");   // static assets and the recording's own
                                               // cookies and tokens are dropped by default
+var code = ScenarioCodeGenerator.FromHar(File.ReadAllText("session.har"));
 ```
 
 ### WebSockets — `Autobahn.WebSockets`

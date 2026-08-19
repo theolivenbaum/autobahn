@@ -34,6 +34,7 @@ internal static class Program
                 "version" => Version(),
                 "list" => await Commands.List(options).ConfigureAwait(false),
                 "run" => await Commands.Run(options).ConfigureAwait(false),
+                "record" => await RecordCommand.Run(options).ConfigureAwait(false),
                 _ => Help()
             };
         }
@@ -63,14 +64,20 @@ internal static class Program
             autobahn {GetVersion()} - load testing for .NET
 
             Usage:
-              autobahn run  <file> [options]   Run the scenarios a file exposes.
-              autobahn list <file>             List them without running anything.
+              autobahn run    <file> [options]  Run the scenarios a file exposes.
+              autobahn list   <file>            List them without running anything.
+              autobahn record <url>  [options]  Learn a scenario by watching a browser session.
 
             <file> is either a built assembly, or a single C# script (.cs / .csx) that
             returns a scenario or a list of them as its last expression. In an assembly a
             scenario source is a public static property, or a public static parameterless
             method, returning ScenarioProps or a sequence of them - mark them
             [ScenarioSource] to say which ones you meant.
+
+            'record' opens a real browser, watches every request the page makes, and writes
+            the scenario source for what happened. It is not browser-driven load testing:
+            browsers under load make the generator the bottleneck. Learn from one session,
+            then hammer with an HTTP client.
 
             Options:
               -t, --target <name>        Run only this scenario. Repeatable.
@@ -89,6 +96,18 @@ internal static class Program
                   --no-reports           Write no report files. The console summary still prints.
               -h, --help                 Show this help.
               -v, --version              Show the version.
+
+            Options for 'record':
+              -n, --name <path>          Where the generated file goes.
+                  --namespace <ns>       Emit a class in this namespace instead of a .csx script.
+                  --headless             Record without a browser window; captures the page load only.
+                  --include-assets       Keep images, stylesheets, fonts and scripts.
+                  --all-origins          Record third-party requests too, not just the site's own.
+                  --keep-browser-headers Keep the browser's user-agent and sec-* headers.
+                  --browser-path <path>  Use a Chromium this machine already has, rather than
+                                         the build the Playwright package pins. Also
+                                         AUTOBAHN_BROWSER_PATH.
+                  --test-name <name>     What the generated scenario is called.
 
             Environment variables layer between the JSON config and the command line, under
             the AUTOBAHN_ prefix: AUTOBAHN_REPORT_FOLDER, AUTOBAHN_TARGET_SCENARIOS,

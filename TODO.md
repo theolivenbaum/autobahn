@@ -376,14 +376,15 @@ These ship as separate packages in this repository so they version together with
   clear — it is the WebSocket helper's publish-then-consume pattern with a broker client
   underneath — but neither can be tested without a broker to test against, and a helper
   nothing has ever run is worse than none.*
-- [ ] **Browser-driven testing.** Drive real browsers to measure what a user experiences,
-  not just what the server returns. Needs a deliberate design for parallelism and resource
-  ceilings — browsers are orders of magnitude heavier than an HTTP client and will happily
-  make the load generator the bottleneck. *Not started, and the last of these to build: it
-  is the only one where the naive version is actively misleading, because a load generator
-  running out of memory looks exactly like a slow site.*
 - [x] **Traffic-capture conversion.** Turn a recorded browser session (HAR) into a starting
   scenario, so a realistic test does not start from a blank file.
+- [x] **Learn a test from a browser session.** Drive a real browser through Playwright,
+  watch every request the page makes, and generate the scenario source from what actually
+  happened — so the starting point is a C# file you own and edit, not a recording you
+  replay. This replaces browser-*driven* load testing, which was the wrong shape: running
+  browsers under load makes the generator the bottleneck and measures the generator.
+  Learning from one browser session and then hammering with an HTTP client measures the
+  service.
 
 **Getting a run's numbers somewhere else**
 

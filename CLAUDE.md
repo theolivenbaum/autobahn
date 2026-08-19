@@ -288,7 +288,8 @@ is the file/user logger.
 Four packages beside the engine, each with its own `.csproj` in the root solution so a plain
 `dotnet build` covers them: `Autobahn.Http` (with HAR conversion), `Autobahn.WebSockets`,
 `Autobahn.Grpc` and `Autobahn.OpenTelemetry`. They depend on the engine and never the other
-way round; the engine must stay usable with none of them installed.
+way round; the engine must stay usable with none of them installed. The CLI references
+`Autobahn.Http` because `autobahn record` generates HTTP scenario source.
 
 - **The HTTP factories live on `HttpRequest`, not on a class called `Http`.** A class with the
   same name as its own namespace binds to the *namespace* inside anything under a shared root,
@@ -331,6 +332,17 @@ exposes. `Autobahn.Cli.csproj` still packs as the `autobahn` dotnet tool.
 - Unlike `CommandLineArgs` (the in-process parser, where an unknown argument belongs to the
   test runner and must be ignored), `CliParser` treats an unknown option as an error. At a
   prompt a mistyped flag that silently does nothing is worse than one that stops.
+- **`autobahn record` is not browser-driven load testing and must not become it.** It drives
+  one Playwright session, records what the page requested, and emits scenario source that an
+  *HTTP client* then runs under load. Browsers under load make the generator the bottleneck
+  and measure the generator; the whole point is to learn from a browser and then not use one.
+- The generator lives in `Autobahn.Http` (`ScenarioCodeGenerator`), not the CLI, so it is
+  testable without a browser and works from a HAR too. Its output has to *compile*: the tests
+  load a generated script back through `ScriptScenarioLoader`, because checking the shape of
+  the text would not catch an unescaped quote. `ScriptScenarioLoader` touches
+  `Autobahn.Http.HttpRequest` before enumerating loaded assemblies for the same reason —
+  assemblies load lazily, and a generated script would otherwise fail to compile against a
+  package the tool had not happened to load yet.
 
 ## Conventions
 

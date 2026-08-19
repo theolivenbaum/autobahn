@@ -150,9 +150,9 @@ internal class AutobahnMeterTests
         var error = readings.Single(x => (string?)x.Tags["status_code"] == "500");
 
         await Assert.That(ok.Value).IsEqualTo(300);
-        await Assert.That(ok.Tags["is_error"]).IsEqualTo(false);
+        await Assert.That((bool?)ok.Tags["is_error"]).IsFalse();
         await Assert.That(error.Value).IsEqualTo(5);
-        await Assert.That(error.Tags["is_error"]).IsEqualTo(true);
+        await Assert.That((bool?)error.Tags["is_error"]).IsTrue();
     }
 
     [Test]

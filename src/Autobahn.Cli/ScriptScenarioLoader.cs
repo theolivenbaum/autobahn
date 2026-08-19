@@ -43,6 +43,7 @@ internal static class ScriptScenarioLoader
                 "System.Threading.Tasks",
                 "Autobahn",
                 "Autobahn.Feeds",
+                "Autobahn.Http",
                 "Autobahn.Metrics",
                 "Autobahn.Thresholds")
             // Scripts live next to their data; a relative path in one should mean relative to
@@ -82,9 +83,18 @@ internal static class ScriptScenarioLoader
     /// <remarks>
     /// Dynamic assemblies and anything loaded from memory have no location and cannot be
     /// referenced by the compiler, so they are skipped rather than throwing.
+    ///
+    /// The touch of <c>Autobahn.Http</c> below is load-bearing: assemblies load lazily, so a
+    /// <c>run</c> that never mentions the HTTP helper would not have it loaded, and a script
+    /// using it - including one this tool generated - would fail to compile. Referencing a
+    /// type from it forces the load before the list is taken.
     /// </remarks>
-    private static IEnumerable<Assembly> ReferencedAssemblies() =>
-        AppDomain.CurrentDomain
+    private static IEnumerable<Assembly> ReferencedAssemblies()
+    {
+        _ = typeof(Autobahn.Http.HttpRequest);
+
+        return AppDomain.CurrentDomain
             .GetAssemblies()
             .Where(x => !x.IsDynamic && !string.IsNullOrEmpty(x.Location));
+    }
 }

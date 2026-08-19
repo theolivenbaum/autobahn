@@ -37,11 +37,15 @@
         <!-- Referenced ahead of use: the terminal dashboard is the next thing this project
              grows, and pinning the version now keeps the tool's dependency set decided. -->
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.9.0" />
+        <PackageReference Include="Microsoft.Playwright" Version="1.62.0" />
         <PackageReference Include="Terminal.Gui" Version="2.4.17" />
     </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="../Autobahn/Autobahn.csproj" />
+        <!-- 'autobahn record' generates HTTP scenario source, which is the HTTP package's
+             code generator. The tool carries it; a test project only does if it wants to. -->
+        <ProjectReference Include="../Autobahn.Http/Autobahn.Http.csproj" />
     </ItemGroup>
 
     <ItemGroup>

@@ -28,8 +28,8 @@ internal static class CliParser
         if (first.StartsWith('-'))
             return CliOptions.Failed($"'{first}' is an option, not a command. Try 'autobahn run <file>'.");
 
-        if (first is not ("run" or "list"))
-            return CliOptions.Failed($"'{first}' is not a command. Known commands: run, list.");
+        if (first is not ("run" or "list" or "record"))
+            return CliOptions.Failed($"'{first}' is not a command. Known commands: run, list, record.");
 
         var options = new CliOptions { Command = first };
         var formats = new List<ReportFormat>();
@@ -136,13 +136,43 @@ internal static class CliParser
                     options = options with { NoReports = true };
                     break;
 
+                case "--headless":
+                    options = options with { Headless = true };
+                    break;
+
+                case "--include-assets":
+                    options = options with { IncludeAssets = true };
+                    break;
+
+                case "--all-origins":
+                    options = options with { SameOriginOnly = false };
+                    break;
+
+                case "--namespace":
+                    if (Value(args, ref i, inline) is not { } ns) return Missing(name);
+                    options = options with { RecordNamespace = ns };
+                    break;
+
+                case "--keep-browser-headers":
+                    options = options with { KeepBrowserHeaders = true };
+                    break;
+
+                case "--browser-path":
+                    if (Value(args, ref i, inline) is not { } browser) return Missing(name);
+                    options = options with { BrowserPath = browser };
+                    break;
+
                 default:
                     return CliOptions.Failed($"'{name}' is not an option this version understands.");
             }
         }
 
         if (options.Source is null)
-            return CliOptions.Failed($"'autobahn {first}' needs a file: an assembly, or a C# script.");
+        {
+            return CliOptions.Failed(first == "record"
+                ? "'autobahn record' needs a URL to open."
+                : $"'autobahn {first}' needs a file: an assembly, or a C# script.");
+        }
 
         return options with { ReportFormats = formats, TargetScenarios = targets };
     }

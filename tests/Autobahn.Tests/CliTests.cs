@@ -369,3 +369,109 @@ internal class AssemblyScenarioLoaderTests
         await Assert.That(ex.Message).Contains("ScenarioSource");
     }
 }
+
+internal class RecordCliParsingTests
+{
+    [Test]
+    public async Task Record_is_a_command()
+    {
+        var options = CliParser.Parse(["record", "https://example.com"]);
+
+        await Assert.That(options.Error).IsNull();
+        await Assert.That(options.Command).IsEqualTo("record");
+        await Assert.That(options.Source).IsEqualTo("https://example.com");
+
+        // Same-origin is the default: a page pulls in fonts, analytics and embeds from half
+        // the internet, and none of it is what the test is about.
+        await Assert.That(options.SameOriginOnly).IsTrue();
+        await Assert.That(options.IncludeAssets).IsFalse();
+        await Assert.That(options.Headless).IsFalse();
+    }
+
+    [Test]
+    public async Task Record_takes_its_own_options()
+    {
+        var options = CliParser.Parse(
+        [
+            "record", "https://example.com",
+            "--headless", "--include-assets", "--all-origins", "--keep-browser-headers",
+            "--namespace", "MyTests",
+            "--browser-path", "/opt/chromium",
+            "-n", "Out.cs"
+        ]);
+
+        await Assert.That(options.Error).IsNull();
+        await Assert.That(options.Headless).IsTrue();
+        await Assert.That(options.IncludeAssets).IsTrue();
+        await Assert.That(options.SameOriginOnly).IsFalse();
+        await Assert.That(options.KeepBrowserHeaders).IsTrue();
+        await Assert.That(options.RecordNamespace).IsEqualTo("MyTests");
+        await Assert.That(options.BrowserPath).IsEqualTo("/opt/chromium");
+        await Assert.That(options.ReportFileName).IsEqualTo("Out.cs");
+    }
+
+    [Test]
+    public async Task Record_with_no_url_says_it_needs_one()
+    {
+        await Assert.That(CliParser.Parse(["record"]).Error!).Contains("needs a URL");
+    }
+
+    [Test]
+    public async Task The_unknown_command_message_lists_record_too()
+    {
+        await Assert.That(CliParser.Parse(["frobnicate", "x"]).Error!).Contains("record");
+    }
+}
+
+/// <summary>
+/// The generator's output has to compile, and the runner has to accept it. Checking the shape
+/// of the text is not enough: a generated file that does not run is worse than none.
+/// </summary>
+internal class GeneratedScenarioRunsTests
+{
+    [Test]
+    public async Task A_generated_script_compiles_and_loads_through_the_runner()
+    {
+        var code = Autobahn.Http.ScenarioCodeGenerator.Generate(
+        [
+            Autobahn.Http.HttpRequest.Get("https://example.com/api/products"),
+            Autobahn.Http.HttpRequest.Post("https://example.com/api/basket")
+                .WithStringBody("""{"sku":"abc"}""", "application/json")
+        ],
+        new Autobahn.Http.ScenarioCodeOptions
+        {
+            ScenarioName = "generated",
+            BaseAddress = "https://example.com"
+        });
+
+        var path = Path.Combine(Path.GetTempPath(), $"autobahn_generated_{Guid.NewGuid():N}.csx");
+        await File.WriteAllTextAsync(path, code);
+
+        try
+        {
+            var scenarios = await ScriptScenarioLoader.LoadAsync(path);
+
+            await Assert.That(scenarios.Count).IsEqualTo(1);
+            await Assert.That(scenarios[0].ScenarioName).IsEqualTo("generated");
+            await Assert.That(scenarios[0].LoadSimulations).IsNotEmpty();
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Test]
+    public async Task A_generated_class_says_what_assembly_discovery_looks_for()
+    {
+        var code = Autobahn.Http.ScenarioCodeGenerator.Generate(
+            [Autobahn.Http.HttpRequest.Get("https://example.com/api/thing")],
+            new Autobahn.Http.ScenarioCodeOptions { Namespace = "Generated.Tests", ClassName = "Thing" });
+
+        // A class form cannot be loaded without compiling a project, so what is checked here
+        // is that it says the things assembly discovery looks for.
+        await Assert.That(code).Contains("[ScenarioSource]");
+        await Assert.That(code).Contains("public static ScenarioProps Build()");
+        await Assert.That(code).Contains("return scenario;");
+    }
+}
