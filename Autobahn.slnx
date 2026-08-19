@@ -1,8 +1,9 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/NBomber/NBomber.fsproj" />
+    <Project Path="src/Autobahn/Autobahn.csproj" />
+    <Project Path="src/Autobahn.Cli/Autobahn.Cli.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/NBomber.IntegrationTests/NBomber.IntegrationTests.fsproj" />
+    <Project Path="tests/Autobahn.Tests/Autobahn.Tests.csproj" />
   </Folder>
 </Solution>

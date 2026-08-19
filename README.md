@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/autobahn-logo.png" width="180" alt="Autobahn" />
+</p>
+
 # Autobahn
 
 **Autobahn** is a load-testing library for .NET 10, written in pure C#. You write your
@@ -16,14 +20,14 @@ test it.
 
 ## Status
 
-Early, and mid-transition. The code currently in this repository is the 4.1.2 fork point:
-F#, targeting `netstandard2.0`, largely unmodified. Autobahn is being rewritten from that
-starting point into a **pure C# library on .NET 10** — every F# file in the engine gets
-ported, and the F#-specific parts of the public API go away. Clustering is being removed
-outright.
+Early, but the foundation is in place. The engine has been **rewritten from F# into C# and
+targets .NET 10**: one public API surface under `Autobahn.*`, no `FSharp.Core` anywhere in
+the dependency graph, and clustering removed rather than left dormant. The suite that came
+with the fork point is ported and green.
 
-The port, the rename, and the feature roadmap are tracked in [TODO.md](TODO.md), which is
-the plan of record. Expect the API to move until the port lands.
+What is not built yet: metrics, thresholds, the protocol helpers, the CLI, and the live web
+UI. Those are specified in [TODO.md](TODO.md), which is the plan of record. Expect the API
+to keep moving while they land.
 
 ## Why a fork
 
@@ -33,30 +37,29 @@ takes it in its own direction:
 
 - **Open, permanently.** Apache-2.0, no paid tiers, no feature gates, no license server.
 - **Pure C#, current .NET.** One language across the engine, the API, the tests and the
-  UI, on .NET 10. The original engine is F#; every line of it is being ported. That is a
-  large, deliberate cost, paid once, so that the people most likely to contribute to a
-  .NET load-testing tool can read and change every part of it — and so the engine can use
-  what modern .NET actually offers.
+  UI, on .NET 10. The original engine is F#; every line of it was ported. That is a large,
+  deliberate cost, paid once, so that the people most likely to contribute to a .NET
+  load-testing tool can read and change every part of it — and so the engine can use what
+  modern .NET actually offers.
 - **Focused on the single-node engine.** Distributed/cluster execution is out of scope,
-  and the cluster code inherited from the fork point is being removed rather than left to
-  rot — see [TODO.md](TODO.md).
+  and the cluster code inherited from the fork point is gone rather than left to rot.
 - **A real UI.** A first-class live web interface served by the CLI, not just a console
   table and a static HTML file at the end.
-- **Batteries in the box.** Metrics, thresholds, and the common reporting sinks are part
-  of the project rather than separate closed packages.
+- **Batteries in the box.** Metrics, thresholds and the common reporting integrations are
+  part of the project rather than separate closed packages.
 
 ## Hello world
 
 ```csharp
-using NBomber.CSharp;
+using Autobahn;
 
 var scenario = Scenario.Create("hello_world_scenario", async context =>
 {
-    // put any logic here: an HTTP call, a SQL query, a gRPC request.
+    // Put any logic here: an HTTP call, a SQL query, a gRPC request.
     // Autobahn measures how long it takes and whether it succeeded.
-    await Task.Delay(1_000);
+    await Task.Delay(100);
 
-    return Response.Ok();
+    return Response.Ok(statusCode: "200", sizeBytes: 1_024);
 })
 .WithLoadSimulations(
     Simulation.Inject(rate: 10,
@@ -64,14 +67,16 @@ var scenario = Scenario.Create("hello_world_scenario", async context =>
                       during: TimeSpan.FromSeconds(30))
 );
 
-NBomberRunner
+AutobahnRunner
     .RegisterScenarios(scenario)
     .Run();
 ```
 
-> The public namespaces are still `NBomber.*` at the fork point, and `NBomber.CSharp` is
-> the C#-facing half of an API that also has an F# half. After the port there is one
-> surface, under `Autobahn.*`.
+A runnable version lives in [`examples/HelloWorld`](examples/HelloWorld):
+
+```bash
+dotnet run --project examples/HelloWorld
+```
 
 ## Core concepts
 
@@ -81,7 +86,6 @@ NBomberRunner
 | **Step** | A named, measured slice inside a scenario, so one scenario can report several latencies. |
 | **Load simulation** | The shape of the load over time: keep N copies constant, ramp them, inject at a fixed or random rate, or pause. Several compose into a plan. |
 | **Response** | What a scenario or step returns: ok/fail, an optional payload, a status code, a size in bytes. |
-| **Reporting sink** | Where real-time stats go while the test runs (InfluxDB, TimescaleDB, OTLP, your own). |
 | **Worker plugin** | Background work that runs alongside the test and contributes its own stats (e.g. ping). |
 | **Report** | The end-of-run artifact: txt, csv, md, html. |
 
@@ -105,35 +109,95 @@ regardless of how many are still running. Reach for the open model when you are 
 system's capacity, and the closed model when you are simulating a fixed population of
 users.
 
+## Configuration
+
+Anything set in code can be overridden by a JSON config, so the same test binary can be
+gated differently per environment:
+
+```jsonc
+{
+  "TestSuite": "checkout",
+  "TestName": "peak hour",
+  "TargetScenarios": [ "add_to_basket" ],
+
+  "GlobalSettings": {
+    "ScenariosSettings": [
+      {
+        "ScenarioName": "add_to_basket",
+        "WarmUpDuration": "00:00:05",
+        "LoadSimulationsSettings": [
+          { "RampingInject": [50, "00:00:01", "00:00:30"] },
+          { "Inject": [50, "00:00:01", "00:05:00"] }
+        ],
+        "CustomSettings": { "TargetHost": "https://staging.example.com" }
+      }
+    ],
+    "ReportFolder": "./reports",
+    "ReportFormats": [ "Html", "Csv" ],
+    "ReportingInterval": "00:00:05"
+  }
+}
+```
+
+```csharp
+AutobahnRunner
+    .RegisterScenarios(scenario)
+    .LoadConfig("./autobahn-config.json")
+    .Run(args);          // --config, --infra and --target also work from the command line
+```
+
+`CustomSettings` is handed to the scenario's `Init` as an `IConfiguration`, so a scenario
+binds it to whatever shape it likes.
+
+## Logging
+
+Logging is [Microsoft.Extensions.Logging](https://learn.microsoft.com/dotnet/core/extensions/logging)
+with [ZLogger](https://github.com/Cysharp/ZLogger) behind it: `context.Logger` inside a
+scenario is a plain `ILogger`, the run writes a rolling file next to its reports, and you
+can take over completely:
+
+```csharp
+AutobahnRunner
+    .RegisterScenarios(scenario)
+    .WithMinimumLogLevel(LogLevel.Debug)
+    .WithLogging(builder => builder.AddOpenTelemetry(/* ... */))
+    .Run();
+```
+
 ## Building
 
 You need the .NET 10 SDK. From the repository root:
 
 ```bash
 dotnet build
-dotnet test --filter CI!=disable
+dotnet test
 ```
 
-That is the whole story — no build script, no arguments, no bootstrapper. The
-`CI!=disable` filter skips the tests that need long wall-clock time or external services.
+That is the whole story — no build script, no arguments, no bootstrapper. The tests run
+real load tests in process, so the full suite takes a few minutes. To skip the slowest of
+them:
 
-The examples and the benchmarks have their own solutions and are not part of the root
-build; build them explicitly if you want them:
+```bash
+dotnet test -- --treenode-filter "/*/*/*/*[Category!=slow]"
+```
+
+The examples and the web UI have their own solutions and are not part of the root build:
 
 ```bash
 dotnet build examples/Examples.slnx
-dotnet build performance/Performance.slnx
 ```
 
 ## Repository layout
 
 ```
-Autobahn.slnx         the root solution: the engine and its tests
-src/NBomber/          the engine — F# today, being ported to C#
-tests/                integration tests
-examples/             runnable examples (own solution)
-performance/          benchmarks (own solution)
-assets/               images
+Autobahn.slnx              the root solution: the engine, the CLI, the tests
+src/Autobahn/              the engine and the public API
+src/Autobahn.Cli/          the `autobahn` dotnet tool (skeleton)
+src/Autobahn.Ui/           the Tesserae web UI (not started; own solution)
+src/Autobahn.Ui.Contracts/ wire DTOs shared by the host and the UI
+tests/Autobahn.Tests/      the test suite
+examples/                  runnable examples (own solution)
+assets/                    images
 ```
 
 [CLAUDE.md](CLAUDE.md) has the architecture walkthrough and the conventions that matter

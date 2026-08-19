@@ -3,7 +3,7 @@
 This is the plan of record for Autobahn. It has three parts:
 
 0. **The foundation** — turning the fork point into what Autobahn is meant to be: a pure
-   C# library on .NET 10, with clustering removed.
+   C# library on .NET 10, with clustering removed. Done, apart from the benchmarks.
 1. **Catch-up work** — capabilities, fixes and improvements that appeared in the upstream
    project between the 4.1.2 fork point and its current development line, captured here as
    *behaviour to build*.
@@ -15,8 +15,8 @@ This is the plan of record for Autobahn. It has three parts:
 Everything in this document assumes these, and they are not up for re-litigation item by
 item:
 
-- **Autobahn is a pure C# library.** All F# in the engine is rewritten in C#. The public
-  API stops being two surfaces (one F#-idiomatic, one C#-friendly) and becomes one.
+- **Autobahn is a pure C# library.** The engine is C#, there is one public API surface, and
+  nothing in the dependency graph pulls in `FSharp.Core`.
 - **Autobahn targets .NET 10.** Not `netstandard2.0`, not multi-targeting.
 - **Clustering is removed.** Not deprecated, not left dormant — removed.
 
@@ -28,59 +28,71 @@ implementation detail, no APIs copied verbatim, and no source. Upstream releases
 4.1.2 are not under a license this project can draw from, so every item is a specification
 to be designed and implemented independently.
 
-Sequencing: catch-up items that touch engine internals are cheaper *after* the file they
-live in has been ported, and painful before — a feature added to an F# file is a feature
-that has to be ported twice. Items that only add new code (a new sink, a new protocol
-helper) can start immediately, in C#.
+Sequencing: the port is done, so nothing is blocked on it any more. What does gate the
+rest is section 0.3's remaining item — there is currently no benchmark coverage of the
+scheduler or the stats actor, and both are on the path of everything in section 1.
 
 ### Explicitly out of scope
 
 **Clustering.** Coordinators, agents, distributed execution, cluster autoscaling, cluster
 monitoring and everything that hangs off them are not part of Autobahn and appear nowhere
-in the feature lists below. Autobahn is a single-process load generator. Removing the
-cluster code that came with the fork point is a work item — see section 0.
+in the feature lists below. Autobahn is a single-process load generator. The cluster code
+that came with the fork point is gone — see section 0.1.
+
+**Real-time reporting sinks.** The fork point let you register an `IReportingSink` and
+pushed interval statistics at it, which is how it fed time-series databases while a test
+ran. That contract, its plumbing and the packages that would have implemented it are out of
+scope: the way to watch a run as it happens is the web UI in section 8, and the way to get
+a run's numbers into another system is the machine-readable run artifact in section 5. The
+interface and its registration API have been removed rather than left dormant.
 
 ---
 
 ## 0. Foundation: the C# port, .NET 10, de-clustering
 
-This section is the prerequisite for most of the rest. The order within it matters.
+This section was the prerequisite for the rest, and it is done apart from the benchmark
+item in 0.3 and the packaging and CI items in 0.5. It is kept rather than deleted because
+what was decided here — and what was deliberately *not* changed — is what the sections
+below build on.
 
-### 0.1 Remove clustering — do this first
+### 0.1 Remove clustering — done
 
-Cheapest when done before anything else, because every seam removed is code that never has
-to be ported, tested or reasoned about again.
+Done as part of the C# port: `AddFromAgent` and the agent-stats buffers are gone from the
+stats actor, the scheduler no longer takes a cluster count, `NodeType`, `ScenarioPartition`
+and `TestInfo.ClusterId` no longer exist, and `NodeStats`/`NodeInfo`/`NodeSessionResult`
+became `SessionStats`/`HostInfo`/`SessionResult`. Nothing that survived needed a "why it
+survived" comment.
 
-- [ ] **Delete the cluster seams in the engine.** The agent-stats intake on the stats actor,
+- [x] **Delete the cluster seams in the engine.** The agent-stats intake on the stats actor,
   the per-scenario cluster-count lookup in the test host, the coordinator/agent node types
   and the operation states that only exist for them.
-- [ ] **Simplify the stats pipeline to single-node.** The merge-shaped paths in the stats
+- [x] **Simplify the stats pipeline to single-node.** The merge-shaped paths in the stats
   actor and statistics module exist to combine results across nodes. With one node they are
   pure overhead on the hot path and pure complexity in the port. Collapse them.
-- [ ] **Strip cluster configuration.** Cluster sections in the JSON config model, the
+- [x] **Strip cluster configuration.** Cluster sections in the JSON config model, the
   matching CLI arguments, and their validation.
-- [ ] **Purge the vocabulary.** Node/coordinator/agent naming in types, stats records,
+- [x] **Purge the vocabulary.** Node/coordinator/agent naming in types, stats records,
   reports and log messages, where it exists only because of clustering. Some of it is
   legitimately about "the machine this ran on" — keep that, rename the rest.
-- [ ] **Prove the removal.** The full test suite passes with the cluster code gone, and no
+- [x] **Prove the removal.** The full test suite passes with the cluster code gone, and no
   public type refers to it. Anything that cannot be removed without breaking single-node
   behaviour gets a comment saying why it survived.
 
-### 0.2 Vendor the contracts
+### 0.2 Vendor the contracts — done
 
-- [ ] **Bring the contract types into the repository as C# source.** The engine currently
+- [x] **Bring the contract types into the repository as C# source.** The engine currently
   depends on an external, version-pinned, F# contracts package that this fork neither
   controls nor can evolve — it blocks the rename, the C# port and nearly every feature
   item below. Reimplement the contract surface (scenario context, response, stats records,
-  sink and plugin interfaces, run/test info) as a C# project in this repository, matching
-  the existing behaviour so the engine keeps working while the port proceeds.
+  plugin interface, run/test info) as C# source in this repository, matching the existing
+  behaviour. Done as part of the port rather than as a separate project: the contract types
+  live under `src/Autobahn/Contracts` and `src/Autobahn/Stats`.
 
-### 0.3 Rewrite the engine in C#
+### 0.3 Rewrite the engine in C# — done
 
-The bulk of the work. Port file by file, bottom-up, keeping the suite green throughout.
+The whole engine is C#. What is left of this section is the benchmark work, called out below.
 
-- [ ] **Agree the C# shape for the F# constructs that carry the design**, before porting the
-  files that use them, so the port does not fork into two conventions:
+- [x] **Agree the C# shape for the F# constructs that carry the design.** Settled as:
   - Discriminated unions (load simulations, scheduler commands, actor messages, errors) →
     sealed hierarchies or tagged records. Exhaustiveness stops being a compiler guarantee,
     so it becomes a test.
@@ -89,7 +101,7 @@ The bulk of the work. Port file by file, bottom-up, keeping the suite green thro
   - Structural equality and immutable records → C# `record` types.
   - `inline` hot-path helpers → aggressive inlining where a benchmark justifies it, plain
     methods otherwise. Don't guess; the benchmarks exist.
-- [ ] **Port order, roughly bottom-up so each layer lands on ported foundations:**
+- [x] **Port order, bottom-up so each layer landed on ported foundations:**
   1. Constants, configuration model, extensions/utilities.
   2. Errors and domain types.
   3. Load simulation validation and expansion.
@@ -101,75 +113,90 @@ The bulk of the work. Port file by file, bottom-up, keeping the suite green thro
   9. Test host, session runner, context merging.
   10. The public API — collapsing the F#/C#/shared triple into one surface.
   11. Plugins, then the examples.
-- [ ] **Behaviour parity is the acceptance criterion.** Each ported file lands with its
+- [x] **Behaviour parity is the acceptance criterion.** Each ported file lands with its
   existing tests passing unchanged. Where a test had to change, the change is justified in
   the commit message — a silent behaviour change inside a translation is nearly impossible
   to find afterwards.
-- [ ] **Guard the hot paths with benchmarks.** The scheduler and stats paths have
-  BenchmarkDotNet projects. Record numbers before each port and compare after: the C#
-  version should be at least as fast, and where it is not, that is a bug to fix rather than
-  a cost to accept. Naive translations of F# structural sharing and closures can allocate
-  badly.
-- [ ] **Port the tests to C#** as their subjects land, keeping property-based coverage where
-  it earns its keep.
-- [ ] **Delete the F# projects and the FSharp.Core dependency** once nothing references
-  them. The port is not finished while a consumer still needs `FSharp.Core` in their
-  project to call the API.
+- [ ] **Guard the hot paths with benchmarks.** The fork point's BenchmarkDotNet project
+  benchmarked F# actor prototypes that no longer exist and was deleted with the F# tree, so
+  there is currently *no* benchmark coverage. Write a C# one for the scheduler and the
+  stats actor, and treat it as a precondition for any further work on either. The port
+  already made two changes that want measuring rather than assuming: the stats mailbox is
+  now a `System.Threading.Channels` channel with a struct message instead of a
+  `ConcurrentQueue` polled every 100 ms, and the measurement path no longer allocates a
+  message object per step.
+- [x] **Port the tests to C#.** On TUnit. The FsCheck properties became explicit
+  `[Arguments]` cases plus seeded random sweeps rather than a new property-testing
+  dependency; `LoadSimulationExhaustivenessTests` replaces the exhaustiveness the F#
+  compiler used to prove over the load-simulation union.
+- [x] **Delete the F# projects and the FSharp.Core dependency.** Nothing in the dependency
+  graph references `FSharp.Core` any more. Two packages went with it: the F# markdown
+  builder (replaced by `MarkdownDocument`) and the Serilog Spectre sink (logging is now
+  Microsoft.Extensions.Logging with ZLogger). `ConsoleTables` went too, for a different
+  reason — its alternative-style renderer throws.
 
 ### 0.4 Move to .NET 10
 
-- [ ] **Retarget everything to .NET 10** — engine, tests, examples, benchmarks — and drop
+- [x] **Retarget everything to .NET 10** — engine, tests, examples, benchmarks — and drop
   `netstandard2.0`. Single target framework.
-- [ ] **Use what that unlocks**, deliberately and where it pays: spans and `Memory<T>` on
-  the measurement path, `ValueTask` for hot paths that usually complete synchronously,
-  `System.Threading.Channels` for the actor mailboxes, `TimeProvider` so tests can control
-  time instead of sleeping, `System.Text.Json` source generation for config and the run
-  artifact, and the current `System.Diagnostics.Metrics` primitives as the substrate for
-  section 1 rather than a hand-rolled equivalent.
-- [ ] **Set runtime configuration properly** in the shipped projects — server GC and
-  concurrent GC — and make sure examples inherit sane settings rather than each redefining
-  them.
+- [ ] **Use what that unlocks**, deliberately and where it pays. Done so far:
+  `System.Threading.Channels` for the stats mailbox, `System.Text.Json` for config and the
+  report view model, collection expressions and records throughout. Still owed: spans and
+  `Memory<T>` on the measurement path where a benchmark justifies it, `ValueTask` on hot
+  paths that usually complete synchronously, `TimeProvider` so tests can control time
+  instead of sleeping (the suite currently spends minutes of wall clock on `Task.Delay`),
+  `System.Text.Json` source generation, and the current `System.Diagnostics.Metrics`
+  primitives as the substrate for section 1 rather than a hand-rolled equivalent.
+- [x] **Set runtime configuration properly** in the shipped projects — server GC and
+  concurrent GC, and `GCLatencyMode.SustainedLowLatency` for the duration of a run, so the
+  generator does not report its own gen2 pause as the target's latency.
 - [ ] **Confirm the thread-pool story.** A load generator's own scheduling is its most
   common self-inflicted bottleneck; document what Autobahn assumes and what it configures.
 
 ### 0.5 Repository and release
 
-- [ ] **Rename to Autobahn.** Namespaces, assembly, package id, entry-point types, config
-  file names and environment variables. Do it as part of the port rather than as a separate
-  sweep — the files are being rewritten anyway. Ship a compatibility shim or type aliases
-  for one release so an existing test suite can move over by changing a `using`.
-- [ ] **Package identity and metadata.** Authors, description, repository URL, icon, tags,
-  license expression (`Apache-2.0`), release notes, symbols and deterministic builds.
-- [x] **Retire the legacy build script.** The inherited Cake pipeline cloned upstream plugin
-  repositories and referenced projects that do not exist here. Parked as
-  `build.cake.disable` / `build.ps1.disable` / `build.sh.disable`; delete once nothing
-  refers to it.
+- [x] **Rename to Autobahn.** Namespaces, assembly, package id, entry-point types and
+  config file names all moved with the port. No compatibility shim was shipped: the API
+  changed shape at the same time (one surface instead of three, `SessionStats` instead of
+  `NodeStats`, no reporting sinks), so aliases would have pointed at types that no longer
+  mean the same thing.
+- [x] **Package identity and metadata.** Authors, description, repository URL, icon, tags,
+  license expression (`Apache-2.0`), symbols and deterministic builds, declared once in
+  `Directory.Build.props`. Release notes are still owed.
+- [x] **Retire the legacy build script.** The inherited Cake pipeline is deleted.
 - [x] **A plain `dotnet build` at the root works, and stays working.** One solution file at
-  the root (`Autobahn.slnx`, already the newer format) holding the engine and its tests, so
-  `dotnet build` and `dotnet test` need no arguments. Examples and benchmarks live in their
-  own solutions, out of the default build.
-- [ ] **Rework the examples and fold them back in.** Two of them reference upstream NBomber
-  packages from NuGet — the engine, the HTTP and data helpers, a sink — which is wrong for
-  a fork, breaks the moment the rename lands, and is the reason they are out of the root
-  solution today. Point them at the local project, port them alongside the C# rewrite, and
-  once they build from a clean clone put them back in the root solution so they cannot rot
-  unnoticed.
+  the root (`Autobahn.slnx`) holding the engine, the CLI and the tests, so `dotnet build`
+  and `dotnet test` need no arguments. The examples and the web UI live in their own
+  solutions, out of the default build.
+- [ ] **Grow the examples back.** The three inherited examples were deleted: they depended
+  on upstream `NBomber.Http`, `NBomber.Data` and a sink package, none of which this fork
+  has. `examples/HelloWorld` replaces them and builds against the local project. More are
+  owed as the features they would demonstrate land — and once there is a set worth gating,
+  fold `examples/Examples.slnx` into CI so they cannot rot unnoticed.
 - [ ] **Packaging.** `dotnet pack` producing a correct package, plus a small script for the
   release steps. No build framework.
-- [ ] **CI, from scratch.** The inherited GitHub Actions workflows are parked — renamed to
-  `.github/workflows/*.yml.disable` so Actions ignores them — because they build a solution
-  that no longer exists, pin an old SDK, and publish to NuGet under the upstream package
-  identity. Re-enable only once there is something worth gating: build and test on
-  push and PR to `main`, publish on tag rather than on every push. One target framework
-  means no matrix — keep it that way.
-- [ ] **Dependency sweep.** Audit and update dependencies, drop packages the C# engine no
-  longer needs (several exist only to make F# ergonomic), and add automated vulnerability
-  scanning to CI.
-- [ ] **Repository hygiene.** File-scoped namespaces, nullable reference types enabled
-  solution-wide, `Directory.Build.props` so the target framework and shared settings are
-  declared once instead of per project, and an `.editorconfig`-driven format check in CI.
-- [ ] **Keep and extend the test suite.** The upstream development line dropped its
-  integration tests. Autobahn keeps them, ports them, and every item below lands with tests.
+- [ ] **CI, from scratch.** The inherited GitHub Actions workflows were deleted, not
+  parked: they built a solution that no longer exists, pinned an old SDK, and published to
+  NuGet under the upstream package identity. Write the replacement: build and test on push
+  and PR to `main`, publish on tag rather than on every push. One target framework means no
+  matrix — keep it that way. Two things it has to get right that the old one did not: the
+  test project runs on Microsoft.Testing.Platform (`dotnet test` needs the `global.json`
+  runner opt-in), and the full suite spends minutes of wall clock in `Task.Delay`, so the
+  gate should run the `Category!=slow` subset on PRs and everything on `main`.
+- [x] **Dependency sweep.** The engine is down to eight packages: HdrHistogram,
+  Spectre.Console, ZLogger, and five Microsoft.Extensions ones (Configuration plus its JSON
+  and Binder providers, Logging plus its Configuration provider). Gone: FSharp.Core,
+  FsToolkit.ErrorHandling, FSharp.Json, FuncyDown, CommandLineParser, ConsoleTables,
+  Serilog and its four sinks/enrichers, and the external `NBomber.Contracts` package.
+  Automated vulnerability scanning still needs somewhere to run — see CI, above.
+- [x] **Repository hygiene.** File-scoped namespaces, nullable reference types enabled
+  solution-wide, and a `Directory.Build.props` that declares the target framework, the
+  language level and the package metadata once instead of per project. The
+  `.editorconfig`-driven format check still needs CI to run in.
+- [x] **Keep and extend the test suite.** The upstream development line dropped its
+  integration tests. Autobahn kept them, ported them to C#/TUnit, and added coverage the
+  fork point did not have (load-simulation exhaustiveness, config parsing and rejection,
+  report content). Every item below still lands with tests.
 
 ---
 
@@ -181,7 +208,7 @@ per step; it has no notion of a *metric* that is neither of those.
 - [ ] **A metrics subsystem alongside the existing stats pipeline.** A second, independent
   accumulator that collects named numeric series over the run, aggregated per reporting
   interval and over the whole session, and flushed through the same path that already
-  feeds the console, the reports and the real-time sinks.
+  feeds the console and the reports.
 - [ ] **Metric kinds.** At minimum: *counter* (a value that moves up and down over the run),
   *gauge* (the current value, last write wins), and *histogram* (a distribution, reported
   with percentiles). Each metric carries a name, a unit of measure for display, and a
@@ -202,8 +229,7 @@ per step; it has no notion of a *metric* that is neither of those.
 - [ ] **Stable, deterministic ordering of metric names** in every output, so a diff between
   two runs is a diff of values and not of row order.
 - [ ] **Metrics in every output surface.** Console live table, txt/csv/md/html reports, and
-  the real-time sink payload. The sink contract has to carry metrics, which is a breaking
-  change to it — do it once, with the rename.
+  the run artifact (section 5) that the web UI and run-to-run comparison read.
 
 ## 2. Thresholds (pass/fail criteria)
 
@@ -291,6 +317,12 @@ are what make a load test usable as a CI gate.
 - [ ] **Replace the handwritten HTML report** with output generated by the same UI components
   as the live web interface (see section 8), so there is one visual language and one
   codebase for both.
+- [ ] **Stop wiping the report folder.** A run empties its output folder before it starts.
+  With the default per-session folder that is a no-op, but a pinned `WithReportFolder`
+  points Autobahn at a directory it then deletes recursively on every run — which is a
+  surprising amount of destruction for a load-test tool. Narrow it to removing only the
+  artifacts Autobahn itself wrote last time, or stop cleaning at all and let reports
+  accumulate under their timestamped names.
 - [ ] **Machine-readable run artifact.** A stable, versioned JSON document containing the full
   run result. It is what the UI replays, what run-to-run comparison consumes, and what a CI
   system can assert against. Everything else (txt/csv/md/html) is a rendering of it.
@@ -315,9 +347,10 @@ are what make a load test usable as a CI gate.
   than one, feeds that stream instead of loading a whole file into memory, and a clear story
   for what happens when a finite feed is exhausted mid-run.
 
-## 7. Ecosystem: protocols and sinks
+## 7. Ecosystem: protocol helpers and export
 
 These ship as separate packages in this repository so they version together with the engine.
+None of them exists yet.
 
 **Protocol helpers**
 
@@ -340,17 +373,23 @@ These ship as separate packages in this repository so they version together with
 - [ ] **Traffic-capture conversion.** Turn a recorded browser session (HAR) into a starting
   scenario, so a realistic test does not start from a blank file.
 
-**Real-time sinks and logging**
+**Getting a run's numbers somewhere else**
 
-- [ ] Time-series sinks: InfluxDB (v1 and v2 line protocols), TimescaleDB/PostgreSQL.
-- [ ] **OpenTelemetry (OTLP) export** of stats and metrics — the one that matters most,
-  because it reaches every backend the user already runs instead of adding another.
-- [ ] Datadog.
-- [ ] Log sinks: rolling text file, Grafana Loki, Elasticsearch.
-- [ ] A documented, tested path for writing a custom sink, including what is guaranteed
-  about call ordering, threading, and failure handling (a sink that throws must never take
-  the run down).
-- [ ] Reference deployments (Docker Compose, Kubernetes) for each sink, kept building in CI.
+Reporting sinks are out of scope (see *Explicitly out of scope*). The database-backed ones
+the fork point pointed at — InfluxDB, TimescaleDB, Datadog, Loki, Elasticsearch — are not
+coming back in any form. What replaces them:
+
+- [ ] **OpenTelemetry (OTLP) export** of stats and metrics. The one integration worth
+  building, because it reaches every backend the user already runs instead of adding
+  another; and because it is a *push at the end plus per-interval*, not a plugin contract
+  that user code implements.
+- [ ] **Everything else goes through the run artifact** (section 5): a stable, versioned
+  JSON document that a CI job, a dashboard importer or a comparison tool reads. One format
+  to keep stable rather than a family of sink packages to keep building.
+
+**Logging** is already `Microsoft.Extensions.Logging` with ZLogger providers, so a user who
+wants their run's log in Loki, Elasticsearch or anywhere else adds the provider they
+already use — nothing to build here.
 
 ---
 

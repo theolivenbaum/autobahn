@@ -1,0 +1,42 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- The Autobahn command-line front end, published as a dotnet tool.
+         The terminal UI (Terminal.Gui) and the Kestrel-hosted web UI are roadmap items
+         (TODO.md, sections 6 and 8); this project currently carries the entry point and
+         the argument surface they will hang off. -->
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <RootNamespace>Autobahn.Cli</RootNamespace>
+        <AssemblyName>autobahn</AssemblyName>
+
+        <PackAsTool>true</PackAsTool>
+        <ToolCommandName>autobahn</ToolCommandName>
+        <PackageId>Autobahn.Cli</PackageId>
+        <Title>Autobahn CLI</Title>
+        <Description>Command-line front end for Autobahn: run a load test, watch it live in the terminal, and write its reports.</Description>
+        <PackageTags>load-testing;performance-testing;dotnet-tool;cli</PackageTags>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageIcon>autobahn-icon.png</PackageIcon>
+
+        <ServerGarbageCollection>true</ServerGarbageCollection>
+        <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="../../README.md" Pack="true" Visible="false" PackagePath="" />
+        <None Include="../../LICENSE" Pack="true" Visible="false" PackagePath="" />
+        <None Include="../../assets/autobahn-icon.png" Pack="true" Visible="false" PackagePath="" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Referenced ahead of use: the terminal dashboard is the next thing this project
+             grows, and pinning the version now keeps the tool's dependency set decided. -->
+        <PackageReference Include="Terminal.Gui" Version="2.4.17" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../Autobahn/Autobahn.csproj" />
+    </ItemGroup>
+
+</Project>

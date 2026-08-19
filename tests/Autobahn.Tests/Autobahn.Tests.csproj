@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <RootNamespace>Autobahn.Tests</RootNamespace>
+        <IsPackable>false</IsPackable>
+        <OutputType>Exe</OutputType>
+        <!-- TUnit runs on Microsoft.Testing.Platform: the test project is its own host. -->
+        <TestingPlatformDotnetTestSupport>true</TestingPlatformDotnetTestSupport>
+        <ServerGarbageCollection>true</ServerGarbageCollection>
+        <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+        <NoWarn>$(NoWarn);TUnit0055</NoWarn>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="TUnit" Version="1.65.31" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../../src/Autobahn/Autobahn.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <Content Include="Assets/**" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
+</Project>

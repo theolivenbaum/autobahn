@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="../Autobahn.Ui.Contracts/Autobahn.Ui.Contracts.csproj" />
+  <Project Path="Autobahn.Ui.csproj" />
+</Solution>

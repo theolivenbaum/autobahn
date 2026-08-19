@@ -334,9 +334,11 @@ ASALocalRun/
 .ionide/
 /logs/
 
-.nbomber-plugins/
 
 .fake
 .ionide
 
-!/src/NBomber/DomainServices/Reports
+# Autobahn run output. A run writes its reports and its log into the report folder,
+# which defaults to ./reports/{sessionId} relative to wherever the test was started.
+reports/
+TestResults/

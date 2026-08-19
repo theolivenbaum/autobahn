@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- The Tesserae application, compiled to JS/CSS/HTML by the Transpose compiler and
+         embedded into Autobahn.Cli as resources. netstandard2.0 for the same reason as
+         Autobahn.Ui.Contracts. See TODO.md, section 8.
+
+         Not in the root solution: building it needs the Transpose compiler installed as a
+         global tool, which a clean clone does not have. -->
+
+    <PropertyGroup>
+        <TargetFramework>netstandard2.0</TargetFramework>
+        <RootNamespace>Autobahn.Ui</RootNamespace>
+        <IsPackable>false</IsPackable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../Autobahn.Ui.Contracts/Autobahn.Ui.Contracts.csproj" />
+    </ItemGroup>
+
+</Project>

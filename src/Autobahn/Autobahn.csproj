@@ -1,0 +1,48 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <PackageId>Autobahn</PackageId>
+        <Title>Autobahn</Title>
+        <Description>Load testing for .NET. Write your scenario in C#, run it against anything that speaks a protocol, and get latency, throughput and error statistics you can gate a build on.</Description>
+        <PackageTags>load-testing;performance-testing;stress-testing;benchmark</PackageTags>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageIcon>autobahn-icon.png</PackageIcon>
+        <GenerateDocumentationFile>true</GenerateDocumentationFile>
+        <!-- Types and non-obvious members carry docs; a comment on every property would be noise. -->
+        <NoWarn>$(NoWarn);CS1591</NoWarn>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+        <ServerGarbageCollection>true</ServerGarbageCollection>
+        <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="../../README.md" Pack="true" Visible="false" PackagePath="" />
+        <None Include="../../LICENSE" Pack="true" Visible="false" PackagePath="" />
+        <None Include="../../assets/autobahn-icon.png" Pack="true" Visible="false" PackagePath="" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="HdrHistogram" Version="2.5.0" />
+        <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Configuration" Version="10.0.0" />
+        <PackageReference Include="Spectre.Console" Version="0.57.2" />
+        <PackageReference Include="ZLogger" Version="2.5.10" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <EmbeddedResource Include="Resources/HtmlReport/index.html" />
+        <EmbeddedResource Include="Resources/HtmlReport/assets/css/index.css" />
+        <EmbeddedResource Include="Resources/HtmlReport/assets/css/sidebar.css" />
+        <EmbeddedResource Include="Resources/HtmlReport/assets/js/index.js" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Autobahn.Tests" />
+        <InternalsVisibleTo Include="Autobahn.Cli" />
+    </ItemGroup>
+
+</Project>
