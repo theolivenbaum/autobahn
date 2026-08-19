@@ -8,9 +8,10 @@ namespace Autobahn.Internal.Domain.Concurrency;
 /// One virtual user. Prepares an iteration, runs the user's scenario function, reports the
 /// measurement, repeats - either once or until asked to stop.
 /// </summary>
-internal sealed class ScenarioActor
+internal sealed class ScenarioActor : IDisposable
 {
     private readonly ILogger _logger;
+    private readonly ScenarioContextArgs _scnCtx;
     private readonly RuntimeScenario _scenario;
     private readonly CancellationToken _cancelToken;
     private readonly Stopwatch _timer = new();
@@ -22,6 +23,7 @@ internal sealed class ScenarioActor
     public ScenarioActor(ScenarioContextArgs scnCtx, ScenarioInfo scenarioInfo)
     {
         _logger = scnCtx.Logger;
+        _scnCtx = scnCtx;
         _scenario = scnCtx.Scenario;
         _cancelToken = scnCtx.ScenarioCancellationToken.Token;
         _scenarioCtx = new ScenarioExecutionContext(scnCtx, _timer, scenarioInfo);
@@ -78,12 +80,19 @@ internal sealed class ScenarioActor
 
             while (infiniteRun && !_shouldStop && !_cancelToken.IsCancellationRequested)
             {
+                // A counted simulation hands out its iterations one at a time. Claiming before
+                // running rather than counting after is what makes the total exact.
+                var budget = _scnCtx.IterationBudget;
+                if (budget is not null && !budget.TryClaim()) break;
+
                 if (_scenario.Run is { } run)
                 {
                     _scenarioCtx.PrepareNextIteration();
                     await ScenarioExecution.Measure(Constants.ScenarioGlobalInfo, _scenarioCtx, timeBucket, run)
                         .ConfigureAwait(false);
                 }
+
+                budget?.MarkCompleted();
 
                 infiniteRun = runInfinite;
                 timeBucket = _scenarioCtx.CurrentTimeBucket;
@@ -94,4 +103,6 @@ internal sealed class ScenarioActor
             _working = false;
         }
     }
+
+    public void Dispose() => _scenarioCtx.Dispose();
 }

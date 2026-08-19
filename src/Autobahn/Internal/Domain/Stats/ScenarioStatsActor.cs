@@ -86,13 +86,23 @@ internal sealed class ScenarioStatsActor : IAsyncDisposable
     public void AddMeasurement(in Measurement measurement) =>
         _mailbox.Writer.TryWrite(new ActorMessage(MessageKind.AddMeasurement, measurement, null, null, TimeSpan.Zero, TimeSpan.Zero));
 
-    /// <summary>Closes the current reporting interval and returns its stats.</summary>
-    public Task<ScenarioStats> BuildReportingStats(LoadSimulationStats simulationStats, TimeSpan executedDuration)
+    /// <summary>
+    /// Closes the current reporting interval and returns its stats.
+    /// </summary>
+    /// <param name="simulationStats">The load simulation the interval ran under.</param>
+    /// <param name="executedDuration">How long the scenario has actually been running.</param>
+    /// <param name="pause">
+    /// How much of the interval was spent in a pause simulation. Deducted from the window
+    /// throughput is computed over, so an interval that was half paused does not report half
+    /// the rate the scenario actually achieved.
+    /// </param>
+    public Task<ScenarioStats> BuildReportingStats(
+        LoadSimulationStats simulationStats, TimeSpan executedDuration, TimeSpan pause = default)
     {
         var reply = new TaskCompletionSource<ScenarioStats>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         if (!_mailbox.Writer.TryWrite(new ActorMessage(
-                MessageKind.BuildReportingStats, default, reply, simulationStats, executedDuration, TimeSpan.Zero)))
+                MessageKind.BuildReportingStats, default, reply, simulationStats, executedDuration, pause)))
         {
             reply.TrySetResult(Statistics.EmptyScenarioStats(_scenario));
         }
@@ -130,7 +140,7 @@ internal sealed class ScenarioStatsActor : IAsyncDisposable
                     {
                         var stats = BuildStats(
                             [.. _intervalStepsResults.Values], msg.SimulationStats!,
-                            msg.ExecutedDuration, TimeSpan.Zero, isFinalStats: false);
+                            msg.ExecutedDuration, msg.Pause, isFinalStats: false);
 
                         AddReportingStats(stats);
                         FlushTempBuffer();

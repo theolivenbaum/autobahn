@@ -34,6 +34,18 @@ public sealed record AutobahnContext
     public LogLevel? MinimumLogLevel { get; init; }
     public required bool EnableStopTestForcibly { get; init; }
 
+    /// <summary>
+    /// Ends the run when this is cancelled. The session still stops cleanly and still writes
+    /// its reports - cancelling asks for an early finish, not for the results to be thrown away.
+    /// </summary>
+    public CancellationToken CancellationToken { get; init; }
+
+    /// <summary>
+    /// Whether Ctrl+C ends the run early instead of killing the process. On by default when
+    /// there is a console to press it at.
+    /// </summary>
+    public required bool EnableCancelKeyPress { get; init; }
+
     public static AutobahnContext Empty { get; } = new()
     {
         TestSuite = Constants.DefaultTestSuite,
@@ -53,6 +65,8 @@ public sealed record AutobahnContext
         EnableHintsAnalyzer = false,
         TargetScenarios = null,
         MinimumLogLevel = null,
-        EnableStopTestForcibly = false
+        EnableStopTestForcibly = false,
+        CancellationToken = default,
+        EnableCancelKeyPress = true
     };
 }

@@ -37,7 +37,11 @@ internal sealed class ReportingManager : IReportingManager
         _schedulers = schedulers;
         _sessionArgs = sessionArgs;
         _reportingInterval = sessionArgs.ReportingInterval;
-        _timerMaxDuration = schedulers.Max(x => x.Scenario.PlanedDuration);
+        // A plan with a counted segment has no length to stop the timer at, so it ticks until
+        // the run itself ends.
+        _timerMaxDuration = schedulers.Any(x => x.Scenario.HasCountedSimulations)
+            ? TimeSpan.MaxValue
+            : schedulers.Max(x => x.Scenario.PlanedDuration);
 
         _buildRealtimeStatsTimer = new System.Timers.Timer(_reportingInterval.TotalMilliseconds);
         _buildRealtimeStatsTimer.Elapsed += OnElapsed;

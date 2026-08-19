@@ -24,6 +24,12 @@ internal sealed record SessionArgs
     public required bool EnableHintsAnalyzer { get; init; }
     public required bool EnableStopTestForcibly { get; init; }
 
+    /// <summary>Cancelling this ends the run early; the reports are still written.</summary>
+    public CancellationToken CancellationToken { get; init; }
+
+    /// <summary>Whether Ctrl+C is turned into an early stop rather than killing the process.</summary>
+    public required bool EnableCancelKeyPress { get; init; }
+
     public static SessionArgs Empty { get; } = new()
     {
         TestInfo = TestInfo.Empty,
@@ -34,6 +40,8 @@ internal sealed record SessionArgs
         ReportFormats = Constants.AllReportFormats,
         ReportingInterval = Constants.DefaultReportingInterval,
         EnableHintsAnalyzer = false,
-        EnableStopTestForcibly = false
+        EnableStopTestForcibly = false,
+        CancellationToken = default,
+        EnableCancelKeyPress = true
     };
 }

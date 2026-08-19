@@ -14,6 +14,9 @@ internal enum SchedulerCommand
     InjectOneTimeActors
 }
 
+/// <summary>How a scenario's run ended, and what it cost.</summary>
+internal readonly record struct ScenarioShutdownResult(TimeSpan ExecutedDuration, int AbandonedIterations);
+
 /// <summary>
 /// Walks one scenario's load plan. On every simulation interval it works out how much load
 /// should be live right now and delegates to the closed-model or open-model scheduler.
@@ -30,7 +33,9 @@ internal sealed class ScenarioScheduler : IDisposable
     private RuntimeScenario _scenario;
     private Timer? _warmUpTimer;
     private SimulationPlanItem _currentSimulation;
-    private TimeSpan _pauseDuration = TimeSpan.Zero;
+    private long _pauseDurationTicks;
+    private long _pauseSinceLastIntervalTicks;
+    private int _abandonedIterations;
     private volatile bool _isWorking;
 
     public ScenarioScheduler(ScenarioContextArgs scnCtx)
@@ -50,27 +55,55 @@ internal sealed class ScenarioScheduler : IDisposable
     public IReadOnlyDictionary<TimeSpan, ScenarioStats> AllRealtimeStats => _statsActor.AllRealtimeStats;
     public ScenarioStats ConsoleScenarioStats => _statsActor.ConsoleScenarioStats;
 
+    /// <summary>How many iterations were still running when the scenario gave up waiting.</summary>
+    public int AbandonedIterations => Volatile.Read(ref _abandonedIterations);
+
     public Task Start(CancellationToken testHostCancelToken)
     {
         if (_scnCtx.ScenarioOperation == ScenarioOperation.WarmUp && _scenario.WarmUpDuration is { } warmUp)
-            _warmUpTimer = new Timer(_ => Stop(), null, warmUp, Timeout.InfiniteTimeSpan);
+            _warmUpTimer = new Timer(_ => _ = StopAsync(), null, warmUp, Timeout.InfiniteTimeSpan);
 
         return RunPlan(testHostCancelToken);
     }
 
-    /// <summary>Cancels the scenario and waits, with a bound, for its in-flight iterations.</summary>
-    public Task StopAsync()
+    /// <summary>
+    /// Ends the scenario: cancel, stop both actor schedulers, and wait a bounded time for the
+    /// iterations already in flight to finish so they still count.
+    /// </summary>
+    /// <remarks>
+    /// The fork point stopped synchronously and then polled once a second for up to a minute
+    /// with no way to say what happened. This waits for the scenario's own completion timeout
+    /// and reports how many iterations it gave up on, because an iteration abandoned mid-flight
+    /// is a hole in the numbers that the operator should be told about rather than left to
+    /// infer from a count that does not add up.
+    /// </remarks>
+    public async Task<ScenarioShutdownResult> StopAsync()
     {
         _scnCtx.ScenarioCancellationToken.Cancel();
         Stop();
-        return WaitOnWorkingActors();
+
+        var abandoned = await WaitOnWorkingActors(_scenario.CompletionTimeout).ConfigureAwait(false);
+        Volatile.Write(ref _abandonedIterations, abandoned);
+
+        _constantScheduler.Dispose();
+        _oneTimeScheduler.Dispose();
+
+        return new ScenarioShutdownResult(_scenario.GetExecutedDuration(), abandoned);
     }
 
-    public Task<ScenarioStats> BuildRealtimeStats(TimeSpan duration) =>
-        _statsActor.BuildReportingStats(GetCurrentSimulationStats(), duration);
+    public Task<ScenarioStats> BuildRealtimeStats(TimeSpan duration)
+    {
+        // Whatever of this interval was spent paused is not time the scenario had to work in,
+        // so it comes off the window RPS is computed over.
+        var pause = new TimeSpan(Interlocked.Exchange(ref _pauseSinceLastIntervalTicks, 0));
+        return _statsActor.BuildReportingStats(GetCurrentSimulationStats(), duration, pause);
+    }
 
     public Task<ScenarioStats> GetFinalStats() =>
-        _statsActor.GetFinalStats(GetCurrentSimulationStats(), _scenario.GetExecutedDuration(), _pauseDuration);
+        _statsActor.GetFinalStats(
+            GetCurrentSimulationStats(),
+            _scenario.GetExecutedDuration(),
+            new TimeSpan(Interlocked.Read(ref _pauseDurationTicks)));
 
     public void Dispose()
     {
@@ -95,14 +128,16 @@ internal sealed class ScenarioScheduler : IDisposable
         _isWorking = false;
 
         // A scenario that reached the end of its plan executed the whole plan; one that was
-        // cancelled executed only as far as its own clock got.
-        if (!_scnCtx.ScenarioCancellationToken.IsCancellationRequested)
+        // cancelled executed only as far as its own clock got. A plan with a counted segment
+        // has no planned length to fall back on, so its clock is the only answer either way.
+        if (!_scnCtx.ScenarioCancellationToken.IsCancellationRequested && !_scenario.HasCountedSimulations)
         {
             _scnCtx.ScenarioCancellationToken.Cancel();
             _scenario = ScenarioFactory.SetExecutedDuration(_scenario, _scenario.PlanedDuration);
         }
         else
         {
+            _scnCtx.ScenarioCancellationToken.Cancel();
             _scenario = ScenarioFactory.SetExecutedDuration(_scenario, _scnTimer.Elapsed);
         }
 
@@ -119,82 +154,122 @@ internal sealed class ScenarioScheduler : IDisposable
 
         foreach (var simulation in _scenario.LoadSimulations)
         {
-            var currentTime = TimeSpan.Zero;
             _currentSimulation = simulation;
 
-            // Switching from a closed-model simulation to an open-model one leaves the
-            // long-lived actors of the previous segment running; stop them first.
-            var (cleanCommand, cleanCount) =
-                ScheduleCleanPrevSimulation(simulation, _constantScheduler.ScheduledActorCount);
+            var budget = simulation.Iterations is { } iterations ? new IterationBudget(iterations) : null;
+            _scnCtx.IterationBudget = budget;
 
-            if (cleanCommand == SchedulerCommand.RemoveConstantActors)
-                _constantScheduler.RemoveActors(cleanCount);
+            await RunSegment(simulation, budget, testHostCancelToken).ConfigureAwait(false);
 
-            var simulationInterval = SimulationPlan.GetSimulationInterval(simulation.Value);
-            var intervalDrift = TimeSpan.Zero;
+            _scnCtx.IterationBudget = null;
 
-            while (_isWorking
-                   && currentTime < simulation.Duration
-                   && !_scnCancelToken.IsCancellationRequested
-                   && !testHostCancelToken.IsCancellationRequested)
-            {
-                if (_statsActor.ScenarioFailCount >= _scenario.MaxFailCount)
-                {
-                    Stop();
-                    _scnCtx.ExecStopCommand(new StopCommand.StopTest(
-                        $"Stopping test because of too many fails. Scenario '{_scenario.ScenarioName}' "
-                        + $"contains '{_statsActor.ScenarioFailCount}' fails."));
-                }
-
-                var startInterval = _scnTimer.Elapsed;
-                var timeProgress = SimulationPlan.CalcTimeProgress(currentTime, simulation.Duration);
-
-                var (command, copiesCount) =
-                    Schedule(GetRandomValue, simulation, timeProgress, _constantScheduler.ScheduledActorCount);
-
-                switch (command)
-                {
-                    case SchedulerCommand.AddConstantActors:
-                        _constantScheduler.AddActors(copiesCount, simulationInterval);
-                        break;
-
-                    case SchedulerCommand.RemoveConstantActors:
-                        _constantScheduler.RemoveActors(copiesCount);
-                        break;
-
-                    case SchedulerCommand.InjectOneTimeActors:
-                        _oneTimeScheduler.InjectActors(copiesCount, simulationInterval);
-                        break;
-
-                    case SchedulerCommand.DoNothing:
-                        break;
-                }
-
-                try
-                {
-                    // Scheduling took time; shorten the wait by the drift so the plan keeps its shape.
-                    var interval = simulationInterval - intervalDrift;
-
-                    await Task.Delay(interval > TimeSpan.Zero ? interval : simulationInterval, _scnCancelToken)
-                        .ConfigureAwait(false);
-
-                    intervalDrift = CalcTimeDrift(startInterval, _scnTimer.Elapsed, simulationInterval);
-
-                    currentTime += simulationInterval;
-                    _scnCtx.CurrentTimeBucket += simulationInterval;
-                }
-                catch (OperationCanceledException)
-                {
-                    // The scenario was stopped mid-interval; the loop condition ends the plan.
-                }
-            }
-
-            // Time spent paused is excluded from the window RPS is computed over.
-            if (simulation.Value is LoadSimulation.Pause pause)
-                _pauseDuration += pause.During;
+            if (!_isWorking || _scnCancelToken.IsCancellationRequested || testHostCancelToken.IsCancellationRequested)
+                break;
         }
 
         Stop();
+    }
+
+    private async Task RunSegment(
+        SimulationPlanItem simulation, IterationBudget? budget, CancellationToken testHostCancelToken)
+    {
+        var currentTime = TimeSpan.Zero;
+        var isPause = simulation.Value is LoadSimulation.Pause;
+
+        // Switching from a closed-model simulation to an open-model one leaves the
+        // long-lived actors of the previous segment running; stop them first.
+        var (cleanCommand, cleanCount) =
+            ScheduleCleanPrevSimulation(simulation, _constantScheduler.ScheduledActorCount);
+
+        if (cleanCommand == SchedulerCommand.RemoveConstantActors)
+            _constantScheduler.RemoveActors(cleanCount);
+
+        var simulationInterval = SimulationPlan.GetSimulationInterval(simulation.Value);
+
+        // Copies are normally spread across the interval so they do not all fire at once. A
+        // counted segment is the exception: its work is a fixed number of iterations rather
+        // than a duration, so a copy that waits out the jitter can find the budget already
+        // handed out and never run at all.
+        var startJitter = simulation.IsCounted ? TimeSpan.Zero : simulationInterval;
+        var intervalDrift = TimeSpan.Zero;
+
+        while (_isWorking
+               && !SegmentIsFinished(simulation, budget, currentTime)
+               && !_scnCancelToken.IsCancellationRequested
+               && !testHostCancelToken.IsCancellationRequested)
+        {
+            if (_statsActor.ScenarioFailCount >= _scenario.MaxFailCount)
+            {
+                Stop();
+                _scnCtx.ExecStopCommand(new StopCommand.StopTest(
+                    $"Stopping test because of too many fails. Scenario '{_scenario.ScenarioName}' "
+                    + $"contains '{_statsActor.ScenarioFailCount}' fails."));
+            }
+
+            var startInterval = _scnTimer.Elapsed;
+            var timeProgress = SimulationPlan.CalcTimeProgress(currentTime, simulation.Duration);
+
+            var (command, copiesCount) = Schedule(
+                GetRandomValue, simulation, timeProgress,
+                _constantScheduler.ScheduledActorCount, budget?.RemainingToClaim);
+
+            switch (command)
+            {
+                case SchedulerCommand.AddConstantActors:
+                    _constantScheduler.AddActors(copiesCount, startJitter);
+                    break;
+
+                case SchedulerCommand.RemoveConstantActors:
+                    _constantScheduler.RemoveActors(copiesCount);
+                    break;
+
+                case SchedulerCommand.InjectOneTimeActors:
+                    if (copiesCount > 0) _oneTimeScheduler.InjectActors(copiesCount, startJitter);
+                    break;
+
+                case SchedulerCommand.DoNothing:
+                    break;
+            }
+
+            try
+            {
+                // Scheduling took time; shorten the wait by the drift so the plan keeps its shape.
+                var interval = simulationInterval - intervalDrift;
+
+                await Task.Delay(interval > TimeSpan.Zero ? interval : simulationInterval, _scnCancelToken)
+                    .ConfigureAwait(false);
+
+                intervalDrift = CalcTimeDrift(startInterval, _scnTimer.Elapsed, simulationInterval);
+
+                currentTime += simulationInterval;
+                _scnCtx.CurrentTimeBucket += simulationInterval;
+
+                // Paused time is accumulated as it actually elapses, so a run stopped halfway
+                // through a pause does not have the whole pause deducted from its throughput.
+                if (isPause)
+                {
+                    Interlocked.Add(ref _pauseDurationTicks, simulationInterval.Ticks);
+                    Interlocked.Add(ref _pauseSinceLastIntervalTicks, simulationInterval.Ticks);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // The scenario was stopped mid-interval; the loop condition ends the plan.
+            }
+        }
+    }
+
+    /// <summary>
+    /// A timed segment ends when its duration is up. A counted one ends when every iteration
+    /// has finished - or when none can finish, because they have all been handed out and no
+    /// actor is still working on one.
+    /// </summary>
+    private bool SegmentIsFinished(SimulationPlanItem simulation, IterationBudget? budget, TimeSpan currentTime)
+    {
+        if (budget is null) return currentTime >= simulation.Duration;
+        if (budget.IsFinished) return true;
+
+        return budget.FullyClaimed && GetWorkingActorCount() == 0;
     }
 
     private static int GetRandomValue(int minRate, int maxRate) => Random.Shared.Next(minRate, maxRate);
@@ -203,22 +278,23 @@ internal sealed class ScenarioScheduler : IDisposable
         ScenarioActorPool.GetWorkingActors(_constantScheduler.AvailableActors.Concat(_oneTimeScheduler.AvailableActors))
             .Count();
 
-    private async Task WaitOnWorkingActors()
+    /// <summary>
+    /// Waits for the iterations already running to finish, and returns how many were still
+    /// going when the wait ran out.
+    /// </summary>
+    private async Task<int> WaitOnWorkingActors(TimeSpan timeout)
     {
-        var counter = 0;
+        var deadline = Stopwatch.GetTimestamp() + (long)(timeout.TotalSeconds * Stopwatch.Frequency);
 
-        while (counter < Constants.MaxWaitWorkingActorsSec)
+        while (Stopwatch.GetTimestamp() < deadline)
         {
-            if (GetWorkingActorCount() > 0)
-            {
-                await Task.Delay(Constants.OneSecond).ConfigureAwait(false);
-                counter++;
-            }
-            else
-            {
-                counter = Constants.MaxWaitWorkingActorsSec;
-            }
+            var working = GetWorkingActorCount();
+            if (working == 0) return 0;
+
+            await Task.Delay(Constants.ShutdownPollInterval).ConfigureAwait(false);
         }
+
+        return GetWorkingActorCount();
     }
 
     /// <summary>How much longer the last interval took than it was supposed to.</summary>
@@ -240,26 +316,27 @@ internal sealed class ScenarioScheduler : IDisposable
         Func<int, int, int> getRandomValue,
         SimulationPlanItem simulation,
         int timeProgress,
-        int currentConstActorCount)
+        int currentConstActorCount,
+        int? remainingToClaim = null)
     {
         switch (simulation.Value)
         {
             case LoadSimulation.RampingConstant x:
             {
                 var scheduled = CalcScheduleByTime(x.Copies, simulation.PrevActorCount, timeProgress);
-                var scheduleNow = scheduled - currentConstActorCount;
-
-                if (scheduleNow > 0) return (SchedulerCommand.AddConstantActors, scheduleNow);
-                if (scheduleNow < 0) return (SchedulerCommand.RemoveConstantActors, Math.Abs(scheduleNow));
-                return (SchedulerCommand.DoNothing, 0);
+                return MoveConstantTo(scheduled, currentConstActorCount);
             }
 
             case LoadSimulation.KeepConstant x:
-                if (currentConstActorCount < x.Copies)
-                    return (SchedulerCommand.AddConstantActors, x.Copies - currentConstActorCount);
-                if (currentConstActorCount > x.Copies)
-                    return (SchedulerCommand.RemoveConstantActors, currentConstActorCount - x.Copies);
-                return (SchedulerCommand.DoNothing, 0);
+                return MoveConstantTo(x.Copies, currentConstActorCount);
+
+            case LoadSimulation.IterationsForConstant x:
+            {
+                // Once every iteration has been handed out there is nothing left for a new
+                // copy to do, so the pool winds down instead of being topped back up.
+                var target = remainingToClaim is 0 ? 0 : Math.Min(x.Copies, remainingToClaim ?? x.Copies);
+                return MoveConstantTo(target, currentConstActorCount);
+            }
 
             case LoadSimulation.RampingInject x:
             {
@@ -273,6 +350,9 @@ internal sealed class ScenarioScheduler : IDisposable
             case LoadSimulation.InjectRandom x:
                 return (SchedulerCommand.InjectOneTimeActors, getRandomValue(x.MinRate, x.MaxRate));
 
+            case LoadSimulation.IterationsForInject x:
+                return (SchedulerCommand.InjectOneTimeActors, Math.Min(x.Rate, remainingToClaim ?? x.Rate));
+
             case LoadSimulation.Pause:
                 return currentConstActorCount > 0
                     ? (SchedulerCommand.RemoveConstantActors, currentConstActorCount)
@@ -281,6 +361,13 @@ internal sealed class ScenarioScheduler : IDisposable
             default:
                 throw new NotSupportedException($"Unknown load simulation: {simulation.Value.GetType().Name}");
         }
+    }
+
+    private static (SchedulerCommand Command, int Count) MoveConstantTo(int target, int current)
+    {
+        if (target > current) return (SchedulerCommand.AddConstantActors, target - current);
+        if (target < current) return (SchedulerCommand.RemoveConstantActors, current - target);
+        return (SchedulerCommand.DoNothing, 0);
     }
 
     /// <summary>Stops the closed-model actors left over when the plan switches to an open model.</summary>
@@ -293,6 +380,7 @@ internal sealed class ScenarioScheduler : IDisposable
         {
             LoadSimulation.RampingConstant => (SchedulerCommand.DoNothing, 0),
             LoadSimulation.KeepConstant => (SchedulerCommand.DoNothing, 0),
+            LoadSimulation.IterationsForConstant => (SchedulerCommand.DoNothing, 0),
             _ => (SchedulerCommand.RemoveConstantActors, currentConstActorCount)
         };
     }

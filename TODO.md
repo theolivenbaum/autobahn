@@ -255,28 +255,28 @@ are what make a load test usable as a CI gate.
 
 ## 3. Load model and scheduling
 
-- [ ] **Scenario weight.** When several scenarios model one user population, let each declare
+- [x] **Scenario weight.** When several scenarios model one user population, let each declare
   a share of the traffic (e.g. 80% read / 20% write) rather than forcing the author to
   hand-compute rates per scenario. Weights apply to the combined load model and must remain
   correct while the load ramps.
-- [ ] **Workload distribution helpers.** Ready-made ways to pick *which* work an iteration
+- [x] **Workload distribution helpers.** Ready-made ways to pick *which* work an iteration
   does, so a scenario can model realistic access patterns instead of uniform-random-only:
   uniform, Zipfian (a hot minority of keys — the realistic default for caches and content),
   and multinomial (explicit weighted choice between named operations).
-- [ ] **Instance-aware distribution.** Expose the scenario copy's own index and the total copy
+- [x] **Instance-aware distribution.** Expose the scenario copy's own index and the total copy
   count to user code, so a scenario can deterministically partition a dataset across copies
   (copy 7 of 100 takes rows 7, 107, 207…) instead of having every copy fight over the same
   rows.
-- [ ] **Iteration-count simulations.** Run exactly N iterations — total, or N per injection
+- [x] **Iteration-count simulations.** Run exactly N iterations — total, or N per injection
   step — instead of running for a duration. This is what makes a load test usable as a
   functional smoke test and makes small runs reproducible.
-- [ ] **Correct duration accounting around pauses.** Time spent in a pause simulation must be
+- [x] **Correct duration accounting around pauses.** Time spent in a pause simulation must be
   excluded from the executed duration used to compute throughput, or every plan containing
   a pause under-reports RPS.
-- [ ] **Scheduler shutdown rework.** Stopping is currently a synchronous call that cannot wait
+- [x] **Scheduler shutdown rework.** Stopping is currently a synchronous call that cannot wait
   properly. Make stop asynchronous and deterministic: cancel, dispose both actor schedulers,
   wait for in-flight iterations with a bounded timeout, and report how many were abandoned.
-- [ ] **Load-plan validation.** Validate the whole plan up front with messages that name the
+- [x] **Load-plan validation.** Validate the whole plan up front with messages that name the
   scenario and the offending simulation. Specifically: a random-injection simulation whose
   minimum rate is not below its maximum is a configuration error and must be rejected rather
   than silently producing degenerate load. Every validation message must identify which
@@ -285,19 +285,19 @@ are what make a load test usable as a CI gate.
 
 ## 4. Timeouts and lifecycle
 
-- [ ] **Scenario completion timeout.** When the load plan ends, in-flight iterations are still
+- [x] **Scenario completion timeout.** When the load plan ends, in-flight iterations are still
   running. Give the runner a configurable grace period to let them finish and be counted,
   after which they are abandoned. Without it, long-running iterations are silently lost from
   the final numbers.
-- [ ] **Per-step and per-iteration timeouts**, with a timed-out attempt recorded as a distinct
+- [x] **Per-step and per-iteration timeouts**, with a timed-out attempt recorded as a distinct
   failure kind rather than as a generic error, so a report distinguishes "slow" from "broken".
-- [ ] **Scenario completion hook.** A callback that fires when a scenario finishes, receiving
+- [x] **Scenario completion hook.** A callback that fires when a scenario finishes, receiving
   that scenario's final stats — the place to push a result somewhere, tear down a fixture, or
   fail a build, without wrapping the whole runner.
-- [ ] **Explicit iteration-restart semantics.** The choice of whether a failed step aborts the
+- [x] **Explicit iteration-restart semantics.** The choice of whether a failed step aborts the
   iteration or lets it continue is what makes retry-until-success loops expressible. Make the
   behaviour explicit, documented, and covered by tests.
-- [ ] **Forcible stop.** A predictable, documented path to end a run immediately, with the
+- [x] **Forcible stop.** A predictable, documented path to end a run immediately, with the
   partial results still written out.
 
 ## 5. Reporting

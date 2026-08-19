@@ -41,6 +41,24 @@ public static class Simulation
     public static LoadSimulation InjectRandom(int minRate, int maxRate, TimeSpan interval, TimeSpan during) =>
         new LoadSimulation.InjectRandom(minRate, maxRate, interval, during);
 
+    /// <summary>
+    /// Keeps <paramref name="copies"/> scenario copies running until exactly
+    /// <paramref name="iterations"/> iterations have completed, then moves on. Closed model.
+    /// </summary>
+    /// <remarks>
+    /// Counted, not timed: this is what makes a load test usable as a functional smoke test,
+    /// and what makes a small run reproducible. How long it takes is up to the target.
+    /// </remarks>
+    public static LoadSimulation IterationsForConstant(int copies, int iterations) =>
+        new LoadSimulation.IterationsForConstant(copies, iterations);
+
+    /// <summary>
+    /// Injects <paramref name="rate"/> copies every <paramref name="interval"/> until exactly
+    /// <paramref name="iterations"/> have been started, then moves on. Open model.
+    /// </summary>
+    public static LoadSimulation IterationsForInject(int rate, TimeSpan interval, int iterations) =>
+        new LoadSimulation.IterationsForInject(rate, interval, iterations);
+
     /// <summary>Runs no load at all, for delaying a scenario's start or pausing mid-plan.</summary>
     public static LoadSimulation Pause(TimeSpan during) => new LoadSimulation.Pause(during);
 }

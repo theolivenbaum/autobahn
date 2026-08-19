@@ -138,6 +138,21 @@ public static class AutobahnRunner
         context with { EnableStopTestForcibly = enable };
 
     /// <summary>
+    /// Ends the run when the token is cancelled. The session still stops cleanly and still
+    /// writes its reports: cancelling asks for an early finish, not for the results to be
+    /// thrown away.
+    /// </summary>
+    public static AutobahnContext WithCancellationToken(this AutobahnContext context, CancellationToken cancellationToken) =>
+        context with { CancellationToken = cancellationToken };
+
+    /// <summary>
+    /// Leaves Ctrl+C to the runtime instead of turning it into an early, reported stop.
+    /// The default is to handle it.
+    /// </summary>
+    public static AutobahnContext WithoutCancelKeyPress(this AutobahnContext context) =>
+        context with { EnableCancelKeyPress = false };
+
+    /// <summary>
     /// Applies command-line arguments over the context: <c>-c/--config</c>, <c>-i/--infra</c>
     /// and <c>-t/--target</c>.
     /// </summary>

@@ -98,6 +98,8 @@ dotnet run --project examples/HelloWorld
     Simulation.RampingInject(rate: 100, interval: TimeSpan.FromSeconds(1), during: TimeSpan.FromSeconds(30)),
     Simulation.Inject(rate: 100, interval: TimeSpan.FromSeconds(1), during: TimeSpan.FromMinutes(5)),
     Simulation.InjectRandom(minRate: 50, maxRate: 100, interval: TimeSpan.FromSeconds(1), during: TimeSpan.FromMinutes(1)),
+    Simulation.IterationsForConstant(copies: 4, iterations: 200),
+    Simulation.IterationsForInject(rate: 20, interval: TimeSpan.FromSeconds(1), iterations: 200),
     Simulation.Pause(during: TimeSpan.FromSeconds(10))
 )
 ```
@@ -108,6 +110,72 @@ many copies of the scenario are alive. Open-model simulations (`RampingInject`, 
 regardless of how many are still running. Reach for the open model when you are testing a
 system's capacity, and the closed model when you are simulating a fixed population of
 users.
+
+The two `IterationsFor…` simulations are counted rather than timed: they run an exact
+number of iterations and then finish, whenever that happens to be. That is what makes a
+load test usable as a smoke test, and what makes a small run reproducible.
+
+## Shaping the mix
+
+When several scenarios model one user population, give each a **weight** — its share of
+the combined load — instead of hand-computing rates per scenario. Weights are all-or-
+nothing: either every scenario in the run declares one, or none does.
+
+```csharp
+var browse   = Scenario.Create("browse", …).WithWeight(80);
+var checkout = Scenario.Create("checkout", …).WithWeight(20);
+```
+
+Inside an iteration, the **copy's own index** and the **total copy count** are on
+`context.ScenarioInfo`, and three helpers build on them so copies do not fight over the
+same rows:
+
+```csharp
+context.OwnsIndex(i)                  // is row i this copy's?
+context.Partition(rows)               // this copy's whole slice: copy 3 of 20 gets 3, 23, 43…
+context.ItemForIteration(rows)        // one row per iteration, walking only this copy's slice
+```
+
+`Distribution` picks *which* work an iteration does, when the access pattern matters more
+than the partitioning:
+
+```csharp
+Distribution.Uniform(keys)                       // every key equally likely
+Distribution.Zipfian(keys, skew: 1.1)            // a hot minority - caches, content, feeds
+Distribution.Multinomial(("read", 90), ("write", 10))
+```
+
+## Timeouts, hooks and stopping
+
+```csharp
+Scenario.Create("checkout", …)
+    .WithIterationTimeout(TimeSpan.FromSeconds(2))   // recorded as "-102", not as a generic error
+    .WithCompletionTimeout(TimeSpan.FromSeconds(30)) // grace for in-flight iterations at plan end
+    .WithRestartIterationOnFail(false)               // a failed step no longer abandons the iteration
+    .WithCompletionHook(ctx => Publish(ctx.Stats));  // fires with this scenario's final stats
+
+await Step.Run("pay", context, () => PayAsync(), timeout: TimeSpan.FromSeconds(1));
+```
+
+A timed-out attempt is a distinct failure kind, so a report separates *slow* from *broken*.
+Iterations still running when a scenario's plan ends get its completion timeout to finish
+and be counted; the ones abandoned after that are logged with a count, because a hole in
+the numbers is something an operator should be told about rather than left to infer.
+
+Ending a run early never throws the results away — the scenarios wind down, the statistics
+are calculated and the reports are written:
+
+```csharp
+AutobahnRunner.RegisterScenarios(scenario)
+    .WithCancellationToken(token)   // cancelling ends the run early, reports and all
+    .Run(args);
+```
+
+**Ctrl+C does the same thing** with no wiring at all. Press it once to stop the run and
+keep what it measured; press it again to let the runtime kill the process.
+`WithoutCancelKeyPress()` opts out and leaves Ctrl+C to the runtime. From inside a
+scenario, `context.StopCurrentTest(reason)` and `context.StopScenario(name, reason)` are
+the same early stop.
 
 ## Configuration
 
@@ -197,6 +265,7 @@ src/Autobahn.Ui/           the Tesserae web UI (not started; own solution)
 src/Autobahn.Ui.Contracts/ wire DTOs shared by the host and the UI
 tests/Autobahn.Tests/      the test suite
 examples/                  runnable examples (own solution)
+performance/               BenchmarkDotNet guards for the hot paths (own solution)
 assets/                    images
 ```
 

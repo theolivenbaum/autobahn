@@ -42,13 +42,26 @@ internal static class Constants
 
     /// <summary>The width the console report is laid out at when there is no terminal to measure.</summary>
     public const int NonInteractiveConsoleWidth = 140;
-    public const int MaxWaitWorkingActorsSec = 60;
+    /// <summary>How long in-flight iterations get to finish after a scenario's plan ends.</summary>
+    public static readonly TimeSpan DefaultCompletionTimeout = TimeSpan.FromSeconds(10);
+
+    /// <summary>How often the shutdown path re-checks whether the actors have drained.</summary>
+    public static readonly TimeSpan ShutdownPollInterval = TimeSpan.FromMilliseconds(25);
+
+    // Why a run ended before its plan did.
+
+    public const string StopReasonCancelled = "the caller cancelled the session";
+    public const string StopReasonCtrlC = "Ctrl+C: stopping the test and writing what it measured so far";
 
     // Default status codes.
 
     public const string OperationTimeoutMessage = "operation timeout";
     public const string TimeoutStatusCode = "-100";
     public const string UnhandledExceptionCode = "-101";
+
+    /// <summary>An iteration Autobahn cancelled because it outran its own timeout.</summary>
+    public const string IterationTimeoutStatusCode = "-102";
+    public const string IterationTimeoutMessage = "iteration timeout";
 
     public const int StatsRounding = 2;
     public const int ScenarioMaxFailCount = 5_000;

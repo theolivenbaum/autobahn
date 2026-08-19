@@ -136,7 +136,9 @@ internal static class ContextResolver
             ReportFormats = GetReportFormats(context),
             ReportingInterval = reportingInterval.Value,
             EnableHintsAnalyzer = GetEnableHintsAnalyzer(context),
-            EnableStopTestForcibly = GetEnableStopTestForcibly(context)
+            EnableStopTestForcibly = GetEnableStopTestForcibly(context),
+            CancellationToken = context.CancellationToken,
+            EnableCancelKeyPress = context.EnableCancelKeyPress
         });
     }
 

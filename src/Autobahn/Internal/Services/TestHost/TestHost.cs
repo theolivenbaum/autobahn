@@ -21,6 +21,11 @@ internal sealed class TestHost : IDisposable
     private readonly List<ScenarioScheduler> _allSchedulers = [];
 
     private List<ScenarioScheduler> _currentSchedulers = [];
+
+    // Sticky, unlike _stopped: a stop asked for from outside has to survive the phase
+    // transitions that reset _stopped, or a token cancelled during init is simply forgotten.
+    private volatile string? _externalStopReason;
+
     private bool _stopped;
     private bool _disposed;
     private List<RuntimeScenario> _targetScenarios = [];
@@ -49,6 +54,8 @@ internal sealed class TestHost : IDisposable
 
     public async Task<Result<SessionResult>> RunSession(SessionArgs sessionArgs)
     {
+        using var externalStop = RegisterExternalStop(sessionArgs);
+
         var initResult = await StartInit(sessionArgs).ConfigureAwait(false);
         if (initResult.IsError) return Result<SessionResult>.Fail(initResult.Error);
 
@@ -78,6 +85,13 @@ internal sealed class TestHost : IDisposable
 
         _dep.LogInfo("Calculating final statistics...");
         var sessionResult = await reportingManager.GetSessionResult(GetCurrentHostInfo()).ConfigureAwait(false);
+
+        var completionContext = ContextResolver.CreateBaseContext(
+            sessionArgs.TestInfo, GetCurrentHostInfo, _dep.Logger);
+
+        await TestHostScenario
+            .RunCompletionHooks(_dep, completionContext, _targetScenarios, sessionResult.FinalStats)
+            .ConfigureAwait(false);
 
         return Result<SessionResult>.Ok(sessionResult);
     }
@@ -135,7 +149,7 @@ internal sealed class TestHost : IDisposable
 
         _currentBombingTask = StartScenarios(isWarmUp: true, schedulers, reportingManager);
         await _currentBombingTask.ConfigureAwait(false);
-        await Task.WhenAll(schedulers.Select(x => x.StopAsync())).ConfigureAwait(false);
+        await StopSchedulers(schedulers).ConfigureAwait(false);
 
         _currentOperation = OperationType.None;
     }
@@ -169,6 +183,11 @@ internal sealed class TestHost : IDisposable
 
         var bombingTask = Task.WhenAll(schedulers.Select(x => x.Start(consoleCancelToken.Token)));
 
+        // A stop asked for before this phase began - a token already cancelled when Run was
+        // called, or Ctrl+C during init - applies to the schedulers that did not exist yet.
+        if (_externalStopReason is not null)
+            await Task.WhenAll(schedulers.Select(x => x.StopAsync())).ConfigureAwait(false);
+
         // "Stop forcibly" means the run ends when the plan says so, even if the generator is
         // lagging behind and still has iterations in flight.
         if (_sessionArgs.EnableStopTestForcibly) consoleCancelToken.CancelAfter(maxDuration);
@@ -185,6 +204,61 @@ internal sealed class TestHost : IDisposable
             GC.Collect();
             await Task.Delay(1_000).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// Wires the two ways a run can be ended from outside it - a cancellation token the caller
+    /// holds, and Ctrl+C - onto the same ordinary early stop, so a cancelled run still winds
+    /// its scenarios down, still calculates its statistics and still writes its reports.
+    /// </summary>
+    /// <remarks>
+    /// Ctrl+C is only intercepted once. Pressing it again goes to the runtime's own handler and
+    /// kills the process, which is the escape hatch when a scenario refuses to stop.
+    /// </remarks>
+    private IDisposable RegisterExternalStop(SessionArgs sessionArgs)
+    {
+        var registrations = new List<IDisposable>(2);
+
+        if (sessionArgs.CancellationToken.CanBeCanceled)
+        {
+            registrations.Add(sessionArgs.CancellationToken.Register(
+                () => RequestExternalStop(Constants.StopReasonCancelled)));
+        }
+
+        if (sessionArgs.EnableCancelKeyPress && _dep.ApplicationType == ApplicationType.Console)
+        {
+            var handled = 0;
+
+            void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
+            {
+                if (Interlocked.Exchange(ref handled, 1) == 1) return;
+
+                e.Cancel = true;
+                _dep.LogWarn(Constants.StopReasonCtrlC);
+                RequestExternalStop(Constants.StopReasonCtrlC);
+            }
+
+            Console.CancelKeyPress += OnCancelKeyPress;
+            registrations.Add(new Unregister(() => Console.CancelKeyPress -= OnCancelKeyPress));
+        }
+
+        return new Unregister(() =>
+        {
+            foreach (var registration in registrations) registration.Dispose();
+        });
+    }
+
+    private void RequestExternalStop(string reason)
+    {
+        _externalStopReason = reason;
+        _ = StopTest(reason);
+    }
+
+    private sealed class Unregister(Action dispose) : IDisposable
+    {
+        private Action? _dispose = dispose;
+
+        public void Dispose() => Interlocked.Exchange(ref _dispose, null)?.Invoke();
     }
 
     public void ExecStopCommand(StopCommand command)
@@ -209,6 +283,7 @@ internal sealed class TestHost : IDisposable
         if (scheduler is null) return;
 
         _ = scheduler.StopAsync();
+
         _dep.LogWarn($"Stopping scenario early: {scheduler.Scenario.ScenarioName}, reason: {reason}");
     }
 
@@ -218,7 +293,7 @@ internal sealed class TestHost : IDisposable
 
         _currentOperation = OperationType.Stop;
 
-        await Task.WhenAll(_currentSchedulers.Select(x => x.StopAsync())).ConfigureAwait(false);
+        await StopSchedulers(_currentSchedulers).ConfigureAwait(false);
 
         if (!string.IsNullOrEmpty(reason)) _dep.LogWarn($"Stopping test early: {reason}");
         else _dep.LogInfo("Stopping scenarios...");
@@ -239,6 +314,26 @@ internal sealed class TestHost : IDisposable
             _currentOperation = OperationType.None;
             return true;
         }).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Stops every scheduler and says how many iterations were abandoned mid-flight, because
+    /// a hole in the numbers is something the operator should be told about rather than left
+    /// to infer from a count that does not add up.
+    /// </summary>
+    private async Task StopSchedulers(IReadOnlyList<ScenarioScheduler> schedulers)
+    {
+        var results = await Task.WhenAll(schedulers.Select(x => x.StopAsync())).ConfigureAwait(false);
+
+        for (var i = 0; i < results.Length; i++)
+        {
+            if (results[i].AbandonedIterations == 0) continue;
+
+            _dep.LogWarn(
+                $"Scenario '{schedulers[i].Scenario.ScenarioName}' abandoned "
+                + $"{results[i].AbandonedIterations} iteration(s) that were still running when its completion "
+                + "timeout expired. They are not counted in the results.");
+        }
     }
 
     public List<ScenarioScheduler> CreateScenarioSchedulers(

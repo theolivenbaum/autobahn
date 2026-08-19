@@ -96,10 +96,23 @@ internal static class TestHostConsole
             }
         }
 
-        private static TimeSpan GetMaxScnDuration(bool isWarmUp, IReadOnlyList<ScenarioScheduler> scnSchedulers) =>
-            isWarmUp
-                ? ScenarioFactory.GetMaxWarmUpDuration(scnSchedulers.Select(x => x.Scenario))
-                : ScenarioFactory.GetMaxDuration(scnSchedulers.Select(x => x.Scenario));
+        /// <summary>
+        /// How long the table should say the run will take, or null when the plan cannot say -
+        /// which is the case as soon as one scenario is counted in iterations rather than timed.
+        /// </summary>
+        private static TimeSpan? GetMaxScnDuration(bool isWarmUp, IReadOnlyList<ScenarioScheduler> scnSchedulers)
+        {
+            if (isWarmUp) return ScenarioFactory.GetMaxWarmUpDuration(scnSchedulers.Select(x => x.Scenario));
+
+            if (scnSchedulers.Any(x => x.Scenario.HasCountedSimulations)) return null;
+
+            return ScenarioFactory.GetMaxDuration(scnSchedulers.Select(x => x.Scenario));
+        }
+
+        private static TableTitle DurationTitle(TimeSpan elapsed, TimeSpan? maxDuration) =>
+            maxDuration is { } max
+                ? new TableTitle($"duration: ({elapsed:hh\\:mm\\:ss} - {max:hh\\:mm\\:ss})")
+                : new TableTitle($"duration: ({elapsed:hh\\:mm\\:ss})");
 
         public static void Display(
             IGlobalDependency dep,
@@ -128,13 +141,14 @@ internal static class TestHostConsole
                     try
                     {
                         var currentTime = stopWatch.Elapsed;
+                        var withinPlan = maxDuration is null || currentTime <= maxDuration;
 
-                        if (currentTime < maxDuration && refreshTableCounter == 0)
+                        if (withinPlan && refreshTableCounter == 0)
                             RenderTable(table, scnSchedulers.Select(x => x.ConsoleScenarioStats).ToArray());
 
-                        if (currentTime <= maxDuration)
+                        if (withinPlan)
                         {
-                            table.Title = new TableTitle($"duration: ({currentTime:hh\\:mm\\:ss} - {maxDuration:hh\\:mm\\:ss})");
+                            table.Title = DurationTitle(currentTime, maxDuration);
                             ctx.Refresh();
                         }
 
@@ -154,7 +168,7 @@ internal static class TestHostConsole
                     }
                 }
 
-                table.Title = new TableTitle($"duration: ({maxDuration:hh\\:mm\\:ss} - {maxDuration:hh\\:mm\\:ss})");
+                table.Title = DurationTitle(maxDuration ?? stopWatch.Elapsed, maxDuration);
                 ctx.Refresh();
             });
         }

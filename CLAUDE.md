@@ -103,6 +103,8 @@ src/Autobahn/
   AutobahnRunner.cs, AutobahnContext.cs,
   ClientPool.cs, Time.cs, Converter.cs      the public API, one surface
   Constants.cs                              every tunable default in one place
+  ScenarioContextExtensions.cs              OwnsIndex / Partition / ItemForIteration
+  Distribution.cs                           Uniform / Zipfian / Multinomial workload pickers
   Contracts/                                IScenarioContext, IResponse, LoadSimulation, ScenarioProps…
   Stats/                                    the records the reports and the API read
   Configuration/                            JSON config model (autobahn-config.json)
@@ -112,6 +114,7 @@ src/Autobahn/
     Json/                                   System.Text.Json converters for config and the report view model
     Domain/
       SimulationPlan.cs                     validates and expands the load plan
+      IterationBudget.cs                    hands out the iterations of a counted simulation
       RuntimeScenario.cs, ScenarioFactory.cs
       ScenarioExecutionContext.cs           what user code sees inside a scenario
       StepExecution.cs, ScenarioExecution.cs   the measured wrappers
@@ -131,7 +134,12 @@ src/Autobahn/
 ### Execution model
 
 A run is a **session**: init → optional warm-up → bombing → clean → report.
-`TestHost.RunSession` drives it.
+`TestHost.RunSession` drives it. It can also be ended early — from a cancellation token the
+caller passed, from Ctrl+C, or from `context.StopCurrentTest` inside a scenario. All three
+land on the same ordinary stop, so an early finish still winds the scenarios down, still
+calculates statistics and still writes the reports. `TestHost._externalStopReason` is
+deliberately sticky: a stop asked for during init has to survive the phase transitions that
+reset `_stopped`.
 
 Each target scenario gets a **`ScenarioScheduler`**, which walks that scenario's list of
 load simulations in order. On each simulation interval it computes how much load should be
@@ -176,10 +184,15 @@ is the file/user logger.
   namespaces, an unqualified `Stats.Foo` resolves to the internal one. Use a `using
   Autobahn.Stats;` and unqualified type names rather than a `Stats.` prefix.
 - **`LoadSimulation` is a closed hierarchy, not a union the compiler checks.** The base
-  constructor is private, so only the six nested records exist, but exhaustiveness over
+  constructor is private, so only the eight nested records exist, but exhaustiveness over
   them is *not* proven by the compiler. Every switch ends in a throwing default arm, and
   `LoadSimulationExhaustivenessTests` walks every case through every function that
   switches on one. Adding a case means that test fails until it is handled everywhere.
+- **A counted simulation gets no start jitter.** Copies are normally spread across the
+  simulation interval so they do not all fire at once, but a counted segment's work is a
+  fixed number of iterations rather than a duration, so a copy that waits out the jitter
+  can find the whole budget already handed out and never run. `ScenarioScheduler.RunSegment`
+  zeroes the jitter for those segments; changing that silently makes `copies:` a lie.
 - **Timing is measured in ticks and time buckets**, not `DateTime`. Don't reintroduce
   wall-clock arithmetic on the hot path.
 - **The console live table and the reports read the same stats records.** Changing a stats

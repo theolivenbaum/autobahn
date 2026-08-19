@@ -19,6 +19,12 @@ internal sealed class ScenarioContextArgs
     public required TestInfo TestInfo { get; init; }
     public required Func<HostInfo> GetHostInfo { get; init; }
 
+    /// <summary>
+    /// The remaining allowance of the counted simulation currently running, or null while a
+    /// timed one is. Set by the scheduler as it moves between segments; read by every actor.
+    /// </summary>
+    public IterationBudget? IterationBudget { get; set; }
+
     private long _currentTimeBucketTicks;
 
     /// <summary>

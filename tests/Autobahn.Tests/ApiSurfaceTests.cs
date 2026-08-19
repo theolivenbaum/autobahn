@@ -110,6 +110,7 @@ public class ClientPoolTests
     {
         ThreadId = $"s_{threadNumber}",
         ThreadNumber = threadNumber,
+        CopyCount = 2,
         ScenarioName = "s",
         ScenarioDuration = TimeSpan.Zero,
         ScenarioOperation = ScenarioOperation.Bombing
