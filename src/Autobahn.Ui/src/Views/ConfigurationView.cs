@@ -16,9 +16,9 @@ namespace Autobahn.Ui.Views
     internal static class ConfigurationView
     {
         public static IComponent Build(DashboardState state) =>
-            Widgets.Screen().Children(DeferSync(state.Run, run => Screen(run, state.IsStatic)));
+            Widgets.Screen().Children(DeferSync(state.Run, run => Screen(run)));
 
-        private static IComponent Screen(RunDescriptor run, bool exported)
+        private static IComponent Screen(RunDescriptor run)
         {
             var settings = run.Settings ?? new SettingDescriptor[0];
 
@@ -27,14 +27,8 @@ namespace Autobahn.Ui.Views
             if (settings.Length == 0)
             {
                 body.Add(Message(
-                        exported
-                            ? "An exported run does not carry its configuration"
-                            : "The effective configuration is not in yet",
-                        exported
-                            ? "The run artifact records what a run measured, not the layers its settings came"
-                            + " from. That provenance exists while a run is live, and this page is a copy of"
-                            + " one that has finished."
-                            : "It is published when the run finishes resolving, just before load starts.")
+                        "The effective configuration is not in yet",
+                        "It is published when the run finishes resolving, just before load starts.")
                     .Icon(UIcons.Settings).Variant(MessageVariant.Default));
 
                 return body;

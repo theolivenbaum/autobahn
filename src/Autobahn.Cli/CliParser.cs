@@ -28,8 +28,8 @@ internal static class CliParser
         if (first.StartsWith('-'))
             return CliOptions.Failed($"'{first}' is an option, not a command. Try 'autobahn run <file>'.");
 
-        if (first is not ("run" or "list" or "record" or "export"))
-            return CliOptions.Failed($"'{first}' is not a command. Known commands: run, list, record, export.");
+        if (first is not ("run" or "list" or "record"))
+            return CliOptions.Failed($"'{first}' is not a command. Known commands: run, list, record.");
 
         var options = new CliOptions { Command = first };
         var formats = new List<ReportFormat>();
@@ -68,13 +68,7 @@ internal static class CliParser
 
                 case "-o" or "--out":
                     if (Value(args, ref i, inline) is not { } folder) return Missing(name);
-
-                    // The same flag means the file for an export and the folder for a run,
-                    // which is the same thing said about a command that writes one artifact
-                    // rather than several.
-                    options = first == "export"
-                        ? options with { OutputPath = folder }
-                        : options with { ReportFolder = folder };
+                    options = options with { ReportFolder = folder };
                     break;
 
                 case "-n" or "--name":

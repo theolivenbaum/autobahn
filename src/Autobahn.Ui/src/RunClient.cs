@@ -3,7 +3,6 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
-using Transpose;
 using Autobahn.Ui.Contracts;
 using static Transpose.Core.dom;
 
@@ -66,35 +65,10 @@ namespace Autobahn.Ui
             _token = TokenFromUrl();
         }
 
-        /// <summary>
-        /// Whether this page is a static export rather than a live view.
-        /// </summary>
-        /// <remarks>
-        /// An exported page is the same application reading a snapshot the exporter wrote into
-        /// the document, so there is nothing to connect to and nothing to stop - which the
-        /// shell has to know, or it would offer a stop button that could not work.
-        /// </remarks>
-        public bool IsStatic => Script.Write<bool>("(typeof window.__autobahnSnapshot !== 'undefined')");
-
         public void Start()
         {
-            if (IsStatic)
-            {
-                Embedded();
-                return;
-            }
-
             LoadSnapshot();
             Connect();
-        }
-
-        /// <summary>Applies the snapshot the exporter wrote into the page.</summary>
-        private void Embedded()
-        {
-            var json = Script.Write<string>("JSON.stringify(window.__autobahnSnapshot)");
-            var snapshot = JsonConvert.DeserializeObject<RunSnapshot>(json, Wire);
-
-            if (snapshot != null) _state.Apply(snapshot);
         }
 
         /// <summary>

@@ -70,16 +70,6 @@ namespace Autobahn.Ui
         /// <summary>False for elapsed-since-start on the time axis, true for time of day.</summary>
         public SettableObservable<bool> WallClock { get; }
 
-        /// <summary>
-        /// True when this page is a static export of a finished run rather than a live view.
-        /// </summary>
-        /// <remarks>
-        /// Several screens offer something that only exists while a host is serving - stopping
-        /// the run, downloading a report, listing the other runs in the folder - and an export
-        /// has to say so rather than offer a control that quietly fails.
-        /// </remarks>
-        public bool IsStatic { get; set; }
-
         public SettableObservable<ChartSeries[]> Throughput { get; }
         public SettableObservable<ChartSeries[]> Latency { get; }
         public SettableObservable<ChartSeries[]> Load { get; }

@@ -13,14 +13,17 @@ namespace Autobahn.Ui.Views
     /// The html report is offered as a link rather than an inline frame: this page's content
     /// policy allows nothing to be embedded, deliberately, and relaxing it so a report could be
     /// framed would relax it for everything else too.
+    ///
+    /// This screen lists what the run wrote; it does not render it. The html report is written
+    /// by the engine and is a separate thing from this dashboard on purpose - one is the record
+    /// of a finished run, the other is a window onto a running one.
     /// </remarks>
     internal static class ReportsView
     {
         public static IComponent Build(DashboardState state, RunClient client) =>
-            Widgets.Screen().Children(
-                DeferSync(state.Reports, reports => Screen(reports, client, state.IsStatic)));
+            Widgets.Screen().Children(DeferSync(state.Reports, reports => Screen(reports, client)));
 
-        private static IComponent Screen(ReportDescriptor[] reports, RunClient client, bool exported)
+        private static IComponent Screen(ReportDescriptor[] reports, RunClient client)
         {
             if (reports == null || reports.Length == 0)
             {
@@ -32,20 +35,12 @@ namespace Autobahn.Ui.Views
 
             var body = VStack().Gap(10.px()).WS();
 
-            // An exported page may be anywhere by now, and the run's other files are not: they
-            // are named so somebody knows what the run produced, and nothing more.
-            if (exported)
-            {
-                body.Add(TextBlock("The files the run wrote, beside its artifact. This exported page is not one of them.")
-                    .Small().Foreground(Theme.Secondary.Foreground));
-            }
-
-            for (var i = 0; i < reports.Length; i++) body.Add(Report(reports[i], client, exported));
+            for (var i = 0; i < reports.Length; i++) body.Add(Report(reports[i], client));
 
             return body;
         }
 
-        private static IComponent Report(ReportDescriptor report, RunClient client, bool exported)
+        private static IComponent Report(ReportDescriptor report, RunClient client)
         {
             var header = HStack().AlignItemsCenter().Gap(10.px()).WS().Children(
                 Badge(report.Format.ToLower()).Pill().Info().W(70.px()).NoShrink(),
@@ -53,15 +48,12 @@ namespace Autobahn.Ui.Views
                 TextBlock(Format.Bytes(report.SizeBytes)).Tiny()
                     .Foreground(Theme.Secondary.Foreground).NoShrink());
 
-            if (!exported)
-            {
-                var url = client.ReportUrl(report.FileName);
-                header.Add(Button("Open").SetIcon(UIcons.Download).OnClick(() => window.open(url, "_blank")));
-            }
+            var url = client.ReportUrl(report.FileName);
+            header.Add(Button("Open").SetIcon(UIcons.Download).OnClick(() => window.open(url, "_blank")));
 
             var card = Card(VStack().Gap(8.px()).WS().Children(header)).WS();
 
-            if (!exported && Previewable(report.Format))
+            if (Previewable(report.Format))
             {
                 card.SetFooter(
                     Defer(

@@ -19,22 +19,9 @@ namespace Autobahn.Ui.Views
         private static readonly SettableObservable<string> Baseline = SettableObservable.For("");
         private static readonly SettableObservable<string> Candidate = SettableObservable.For("");
 
-        public static IComponent Build(DashboardState state, RunClient client)
-        {
-            if (state.IsStatic)
-            {
-                return Widgets.Screen().Children(
-                    Message(
-                            "Comparison needs a live run",
-                            "This page is an export of one finished run and carries only that run's"
-                            + " numbers. Comparison reads the artifacts in a report folder, which an"
-                            + " exported file has no access to.")
-                        .Icon(UIcons.Stopwatch).Variant(MessageVariant.Default));
-            }
-
-            return Widgets.Screen().Children(
+        public static IComponent Build(DashboardState state, RunClient client) =>
+            Widgets.Screen().Children(
                 Defer(async () => await Screen(client), Spinner("Reading the report folder…")));
-        }
 
         private static async Task<IComponent> Screen(RunClient client)
         {

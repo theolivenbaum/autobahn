@@ -35,7 +35,6 @@ internal static class Program
                 "list" => await Commands.List(options).ConfigureAwait(false),
                 "run" => await Commands.Run(options).ConfigureAwait(false),
                 "record" => await RecordCommand.Run(options).ConfigureAwait(false),
-                "export" => Commands.Export(options),
                 _ => Help()
             };
         }
@@ -68,8 +67,6 @@ internal static class Program
               autobahn run    <file> [options]  Run the scenarios a file exposes.
               autobahn list   <file>            List them without running anything.
               autobahn record <url>  [options]  Learn a scenario by watching a browser session.
-              autobahn export <run.json> [-o <file>]
-                                                Render a finished run as one self-contained page.
 
             <file> is either a built assembly, or a single C# script (.cs / .csx) that
             returns a scenario or a list of them as its last expression. In an assembly a
@@ -129,9 +126,8 @@ internal static class Program
               1  the command line, the file or the run itself was wrong
               2  the run finished and a threshold failed
 
-            'export' renders the same web view against a run artifact - the .json report - as
-            a single HTML file with no server and no network. It is large, because it carries
-            the whole application: it is for sharing a run, not for replacing the reports.
+            The web view is for watching a run while it happens. A finished run is read from
+            the reports it wrote - the html one for a person, the json one for a machine.
             """);
 
         return AutobahnExitCode.Ok;

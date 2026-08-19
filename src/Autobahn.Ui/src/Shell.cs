@@ -106,27 +106,15 @@ namespace Autobahn.Ui
 
             var row = HStack().AlignItemsCenter().Gap(10.px()).WS().Children(
                 DeferSync(_state.Run, run => Title(run)),
-                DeferSync(_state.Latest, frame => Widgets.StatePill(frame == null ? RunState.Init : frame.State)));
-
-            // An exported page has nothing to connect to, nothing to pause and nothing to stop.
-            // Offering any of it would be offering a control that cannot work.
-            if (_client.IsStatic) row.Add(Badge("exported").Pill().Neutral());
-            else
-            {
-                row.Add(DeferSync(_state.Connected, connected =>
+                DeferSync(_state.Latest, frame => Widgets.StatePill(frame == null ? RunState.Init : frame.State)),
+                DeferSync(_state.Connected, connected =>
                     Badge(connected ? "connected" : "reconnecting").Pill()
-                        .Tone(connected ? BadgeTone.Success : BadgeTone.Warning)));
-            }
-
-            row.Add(VStack().Grow());
-            row.Add(clock);
-
-            if (!_client.IsStatic)
-            {
-                row.Add(Toggle("Live", "Paused").Checked().OnChange((s, _) => _state.SetPaused(!s.IsChecked)));
-                row.Add(Button("Stop run").Danger().SetIcon(UIcons.Stop).OnClick(() => Confirm(false)));
-                row.Add(Button("Stop now").Danger().Compact().SetIcon(UIcons.Bolt).OnClick(() => Confirm(true)));
-            }
+                        .Tone(connected ? BadgeTone.Success : BadgeTone.Warning)),
+                VStack().Grow(),
+                clock,
+                Toggle("Live", "Paused").Checked().OnChange((s, _) => _state.SetPaused(!s.IsChecked)),
+                Button("Stop run").Danger().SetIcon(UIcons.Stop).OnClick(() => Confirm(false)),
+                Button("Stop now").Danger().Compact().SetIcon(UIcons.Bolt).OnClick(() => Confirm(true)));
 
             return VStack().Gap(6.px()).WS().NoShrink()
                 .P(16.px())
@@ -252,7 +240,7 @@ namespace Autobahn.Ui
 
             if (e.key == ".")
             {
-                if (!_client.IsStatic) _state.SetPaused(!_state.Paused.Value);
+                _state.SetPaused(!_state.Paused.Value);
                 return;
             }
 

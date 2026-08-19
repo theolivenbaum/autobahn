@@ -6,10 +6,7 @@ namespace Autobahn.Cli;
 /// <summary>What the command line asked for.</summary>
 internal sealed record CliOptions
 {
-    /// <summary>
-    /// The verb: <c>run</c>, <c>list</c>, <c>record</c>, <c>export</c>, <c>help</c> or
-    /// <c>version</c>.
-    /// </summary>
+    /// <summary>The verb: <c>run</c>, <c>list</c>, <c>record</c>, <c>help</c> or <c>version</c>.</summary>
     public required string Command { get; init; }
 
     /// <summary>The assembly or script holding the scenarios.</summary>
@@ -28,9 +25,6 @@ internal sealed record CliOptions
     public bool ShowConfig { get; init; }
     public bool NoRuntimeMetrics { get; init; }
     public bool NoReports { get; init; }
-
-    /// <summary>Where <c>export</c> writes its page. Null puts it beside the artifact.</summary>
-    public string? OutputPath { get; init; }
 
     // record only.
 

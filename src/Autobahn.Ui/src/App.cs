@@ -18,8 +18,6 @@ namespace Autobahn.Ui
             var state = new DashboardState();
             var client = new RunClient(state);
 
-            state.IsStatic = client.IsStatic;
-
             MountToBody(new Shell(state, client).Build());
 
             client.Start();

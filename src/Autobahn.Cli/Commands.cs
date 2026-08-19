@@ -60,33 +60,6 @@ internal static class Commands
         return Verdict(stats);
     }
 
-    /// <summary>
-    /// Renders a finished run as one self-contained page.
-    /// </summary>
-    /// <remarks>
-    /// The same application the live view is, reading a snapshot the exporter wrote into the
-    /// document rather than one arriving over a socket - so a finished run and a running one
-    /// are looked at through the same screens and cannot disagree about what happened.
-    /// </remarks>
-    public static int Export(CliOptions options)
-    {
-        if (options.Source is null)
-        {
-            Console.Error.WriteLine("autobahn export needs a run artifact: the .json report a run writes.");
-            return AutobahnExitCode.Error;
-        }
-
-        var written = StaticExport.Write(options.Source, options.OutputPath);
-        if (written is null) return AutobahnExitCode.Error;
-
-        var size = new FileInfo(written).Length;
-
-        Console.WriteLine($"Wrote {written} ({size / 1024 / 1024} MB).");
-        Console.WriteLine("It is one file: open it anywhere, no server and no network.");
-
-        return AutobahnExitCode.Ok;
-    }
-
     // The run has already set the exit code if a threshold failed; saying so again in words
     // would double up on the message the reports carry.
     private static int Verdict(SessionStats stats) =>
