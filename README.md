@@ -87,7 +87,10 @@ dotnet run --project examples/HelloWorld
 | **Load simulation** | The shape of the load over time: keep N copies constant, ramp them, inject at a fixed or random rate, or pause. Several compose into a plan. |
 | **Response** | What a scenario or step returns: ok/fail, an optional payload, a status code, a size in bytes. |
 | **Worker plugin** | Background work that runs alongside the test and contributes its own stats (e.g. ping). |
-| **Report** | The end-of-run artifact: txt, csv, md, html. |
+| **Threshold** | A pass/fail rule over the stats or the metrics, checked while the run happens. Its verdict is the process exit code. |
+| **Metric** | A named numeric series over the run — counter, gauge or histogram — for anything latency and throughput do not describe. |
+| **Feed** | Where an iteration gets its data: circular, constant, random, batched or streaming, over CSV, JSON or a list. |
+| **Report** | The end-of-run artifact: json, txt, csv, md, html. |
 
 ## Load simulations
 
@@ -98,6 +101,8 @@ dotnet run --project examples/HelloWorld
     Simulation.RampingInject(rate: 100, interval: TimeSpan.FromSeconds(1), during: TimeSpan.FromSeconds(30)),
     Simulation.Inject(rate: 100, interval: TimeSpan.FromSeconds(1), during: TimeSpan.FromMinutes(5)),
     Simulation.InjectRandom(minRate: 50, maxRate: 100, interval: TimeSpan.FromSeconds(1), during: TimeSpan.FromMinutes(1)),
+    Simulation.IterationsForConstant(copies: 4, iterations: 200),
+    Simulation.IterationsForInject(rate: 20, interval: TimeSpan.FromSeconds(1), iterations: 200),
     Simulation.Pause(during: TimeSpan.FromSeconds(10))
 )
 ```
@@ -108,6 +113,494 @@ many copies of the scenario are alive. Open-model simulations (`RampingInject`, 
 regardless of how many are still running. Reach for the open model when you are testing a
 system's capacity, and the closed model when you are simulating a fixed population of
 users.
+
+The two `IterationsFor…` simulations are counted rather than timed: they run an exact
+number of iterations and then finish, whenever that happens to be. That is what makes a
+load test usable as a smoke test, and what makes a small run reproducible.
+
+## Shaping the mix
+
+When several scenarios model one user population, give each a **weight** — its share of
+the combined load — instead of hand-computing rates per scenario. Weights are all-or-
+nothing: either every scenario in the run declares one, or none does.
+
+```csharp
+var browse   = Scenario.Create("browse", …).WithWeight(80);
+var checkout = Scenario.Create("checkout", …).WithWeight(20);
+```
+
+Inside an iteration, the **copy's own index** and the **total copy count** are on
+`context.ScenarioInfo`, and three helpers build on them so copies do not fight over the
+same rows:
+
+```csharp
+context.OwnsIndex(i)                  // is row i this copy's?
+context.Partition(rows)               // this copy's whole slice: copy 3 of 20 gets 3, 23, 43…
+context.ItemForIteration(rows)        // one row per iteration, walking only this copy's slice
+```
+
+`Distribution` picks *which* work an iteration does, when the access pattern matters more
+than the partitioning:
+
+```csharp
+Distribution.Uniform(keys)                       // every key equally likely
+Distribution.Zipfian(keys, skew: 1.1)            // a hot minority - caches, content, feeds
+Distribution.Multinomial(("read", 90), ("write", 10))
+```
+
+## Timeouts, hooks and stopping
+
+```csharp
+Scenario.Create("checkout", …)
+    .WithIterationTimeout(TimeSpan.FromSeconds(2))   // recorded as "-102", not as a generic error
+    .WithCompletionTimeout(TimeSpan.FromSeconds(30)) // grace for in-flight iterations at plan end
+    .WithRestartIterationOnFail(false)               // a failed step no longer abandons the iteration
+    .WithCompletionHook(ctx => Publish(ctx.Stats));  // fires with this scenario's final stats
+
+await Step.Run("pay", context, () => PayAsync(), timeout: TimeSpan.FromSeconds(1));
+```
+
+A timed-out attempt is a distinct failure kind, so a report separates *slow* from *broken*.
+Iterations still running when a scenario's plan ends get its completion timeout to finish
+and be counted; the ones abandoned after that are logged with a count, because a hole in
+the numbers is something an operator should be told about rather than left to infer.
+
+Ending a run early never throws the results away — the scenarios wind down, the statistics
+are calculated and the reports are written:
+
+```csharp
+AutobahnRunner.RegisterScenarios(scenario)
+    .WithCancellationToken(token)   // cancelling ends the run early, reports and all
+    .Run(args);
+```
+
+**Ctrl+C does the same thing** with no wiring at all. Press it once to stop the run and
+keep what it measured; press it again to let the runtime kill the process.
+`WithoutCancelKeyPress()` opts out and leaves Ctrl+C to the runtime. From inside a
+scenario, `context.StopCurrentTest(reason)` and `context.StopScenario(name, reason)` are
+the same early stop.
+
+## Metrics
+
+Latency, throughput, status codes and data transfer describe the *target*. A **metric** is
+anything else worth a number: the queue you are draining, the cache you are missing, and
+the load generator's own health.
+
+Three kinds, registered by name off `context.Metrics` (asking twice hands back the same
+metric, so a scenario can take it in `Init` and use it on the hot path):
+
+```csharp
+context.Metrics.Counter("cache.miss").Increment();              // a running total
+context.Metrics.Gauge("queue.depth", MetricUnit.Count).Set(n);  // current value, last write wins
+context.Metrics.Histogram("payload", MetricUnit.Kilobytes).Record(bytes);   // a distribution
+```
+
+A write is a single interlocked operation and allocates nothing, so one per iteration costs
+about 24 ns — see `performance/Autobahn.Benchmarks/README.md`. `MetricUnit` says how a raw
+value is displayed: record bytes, report kilobytes; the scale is applied once, when the
+interval closes.
+
+Everything lands on `SessionStats.Metrics`, ordered by name so a diff between two runs is a
+diff of values rather than of row order, and on each `TimeLineHistoryRecord` for the run's
+interval-by-interval view:
+
+```csharp
+var ratio = stats.Metrics.Single(x => x.Name == "cache.hit").Current;
+```
+
+**The load generator measures itself too.** CPU, working set, GC heap and collections,
+thread-pool queue length and thread count, process threads, and socket bytes are collected
+on their own timer without anyone asking, and shown live beside the scenario table:
+
+```
+runtime.cpu  runtime.working_set  runtime.gc_heap  runtime.gc_gen0/1/2
+runtime.threadpool_queue  runtime.threadpool_threads  runtime.threads
+runtime.socket_sent  runtime.socket_received
+```
+
+A load test that cannot show it was not itself the bottleneck is not evidence — that is why
+these are on by default. `WithoutRuntimeMetrics()` turns them off. A counter that a platform
+does not have is dropped for the rest of the run rather than failing it.
+
+## Thresholds
+
+A test that only reports numbers needs a human to read them. **Thresholds** are pass/fail
+rules, checked on every reporting interval and again at the end:
+
+```csharp
+using static Autobahn.Thresholds.ThresholdComparison;
+using static Autobahn.Thresholds.ThresholdSubject;
+
+AutobahnRunner
+    .RegisterScenarios(scenario)
+    .WithThresholds(
+        Threshold.ErrorRateBelow(0.02),
+        Threshold.LatencyBelow(Percent99, 250).ForStep("reserve"),
+        Threshold.RpsAbove(30).StartingAfter(TimeSpan.FromSeconds(12)),
+        Threshold.Status("500", StatusCodeCount, LessThan, 50),
+        Threshold.Metric("payments.attempted", MetricCurrent, GreaterThan, 100).OnlyAtTheEnd(),
+        Threshold.ErrorRate(LessThan, 0.5).AbortingAfter(3))
+    .Run(args);
+```
+
+A rule always states what it **requires**, and it can be scoped to a scenario, one of its
+steps, a status code, or a metric. A rule that names no scenario applies to every scenario
+in the run, tallied separately — one scenario's error rate says nothing about another's.
+
+| Modifier | What it does |
+|--|--|
+| `.ForScenario(name)` | Narrows the rule to one scenario. |
+| `.ForStep(name)` | Reads one step's numbers instead of the scenario's totals. |
+| `.StartingAfter(t)` | Starts checking this far into the run, so ramp-up noise does not trip a steady-state rule. |
+| `.OnlyAtTheEnd()` | One check, against the whole run. Cumulative claims need it. |
+| `.AbortingAfter(n)` | Ends the run after `n` consecutive violations. Without it the rule is advisory. |
+| `.Named(text)` | What the reports call it. |
+
+Advisory is the default: the rule is recorded, reported, and it fails the run at the end,
+but the load keeps going. `.AbortingAfter(n)` is the difference between a report saying a
+service was down and not hammering a service that is already down.
+
+**The verdict is the exit code.** A failed threshold sets the process exit code to `2`, so a
+CI job that runs the test binary fails on its own; the run result says so either way:
+
+```csharp
+if (!stats.AllThresholdsPassed) { /* stats.Thresholds has every rule and how it fared */ }
+```
+
+`WithoutThresholdExitCode()` opts out. A rule that cannot mean what it says — a scenario the
+run does not have, a subject that does not apply to its scope, a rate compared against 12 —
+fails the run before any load is generated, because a gate that silently never checks
+anything is worse than no gate.
+
+Thresholds are declarable in the JSON config too, so the same binary can be gated
+differently per environment (see below).
+
+## Data feeds
+
+A **feed** is where an iteration gets the data it works on. Three orders over any source:
+
+```csharp
+var users = Feed.Circular("users", FeedSource.FromCsv("users.csv", r => r["email"]));
+var host  = Feed.Constant("host", hosts);                       // one, chosen once
+var skus  = Feed.Random("skus", catalogue, seed: 42);           // uniform, reproducible
+var pages = Feed.Batch("pages", rows, batchSize: 50);           // a group per iteration
+var big   = Feed.Streaming("rows", FeedSource.StreamCsv("10m-rows.csv"));
+```
+
+`Feed.Circular` is the default choice: every item is used before any is reused. Reading one
+is a single interlocked increment, so every copy of a scenario can pull from the same feed
+without a lock. `Feed.Streaming` takes a lock per item — the price of not loading the file —
+and reopens its source through the factory when it restarts.
+
+**What happens when a finite feed runs out is stated, not assumed:**
+
+```csharp
+Feed.Circular("users", users, FeedExhaustion.Fail)   // Restart (default), Fail, StopScenario
+```
+
+Repeating the data quietly turns "each user is distinct" into a different test, so a feed
+that must not repeat says so and throws `FeedExhaustedException` instead.
+
+Sources are `FeedSource.FromCsv`, `FromJson`, `StreamCsv`, `StreamJson`, or any list you
+already have. CSV rows come back keyed by the header (case-insensitively) unless you hand
+over a mapping.
+
+## The `autobahn` command line
+
+A load test is still an ordinary .NET program that references the package and calls the
+runner. The tool is the other route: point it at something that *exposes* scenarios, and it
+builds the run around them so every option lives on the command line.
+
+```bash
+dotnet tool install -g Autobahn.Cli
+
+autobahn list   ./bin/Release/net10.0/LoadTests.dll
+autobahn run    ./bin/Release/net10.0/LoadTests.dll -t checkout -f Json,Md -o ./reports
+autobahn run    ./checkout.csx --show-config --reporting-interval 00:00:10
+autobahn record https://shop.example.com    # learn a scenario from a browser session
+```
+
+**From an assembly**: a scenario source is a public static property, or a public static
+parameterless method, returning `ScenarioProps` or a sequence of them. Marking them
+`[ScenarioSource]` is optional but says which members you meant:
+
+```csharp
+public static class Scenarios
+{
+    [ScenarioSource]
+    public static ScenarioProps Checkout => Scenario.Create("checkout", …);
+}
+```
+
+**From a script**: one `.cs` or `.csx` file, no project, no build. Its last expression is
+what gets run, and `Autobahn`, `Autobahn.Feeds`, `Autobahn.Metrics` and `Autobahn.Thresholds`
+are already imported:
+
+```csharp
+// checkout.csx
+return Scenario.Create("checkout", async ctx =>
+    {
+        await Task.Delay(20, ctx.CancellationToken);
+        return Response.Ok(statusCode: "200");
+    })
+    .WithoutWarmUp()
+    .WithLoadSimulations(Simulation.Inject(rate: 50, interval: TimeSpan.FromSeconds(1), during: TimeSpan.FromMinutes(1)));
+```
+
+Exit codes are the contract: `0` ran and every threshold passed, `1` the command line or the
+run was wrong, `2` ran and a threshold failed. `AutobahnExitCode` has the same three for a
+program setting them itself.
+
+### Watching a run in a browser
+
+`autobahn run --ui` serves a live web view beside the run and prints its URL. It is on by
+default at a terminal and off without one, because CI is the case where nobody is going to
+open it and the port is a liability.
+
+```bash
+autobahn run ./bin/Release/net10.0/MyTests.dll --ui --ui-open
+```
+
+It shows the run's throughput, latency percentiles, scheduled-against-actual concurrency,
+status codes and the load generator's own CPU, memory, thread pool and sockets, all over
+time; a tab per scenario with its steps; failures grouped by what they were and when they
+happened; every threshold with a pass/fail bar per interval; the load plan with a playhead;
+the effective configuration and where each value came from; the other runs in the report
+folder with a delta table against any two of them; and the reports the run wrote. Number keys
+jump between sections, `.` freezes the live view and `/` finds the search box.
+
+It binds to loopback, requires a per-run token, and asks for confirmation before stopping the
+run. `--ui-public` serves on every interface and says so loudly: this surface can stop a run.
+
+**The run does not know whether anyone is watching.** No client, twenty clients, a client on
+a slow link, the tab closed mid-run: the timing, the results and the exit code are identical.
+
+The web view is for watching a run happen. A finished run is read from the reports it wrote:
+the HTML one for a person, the JSON artifact for a machine. Those are written by the engine
+and are not this application — a record and a window onto a running test are different things.
+
+The web view is built by the Transpose compiler, which a clean clone does not have. A build
+without it serves a page saying so; `scripts/build-ui.sh` is the one command that changes
+that. See [CLAUDE.md](CLAUDE.md).
+
+## Protocol helpers
+
+Separate packages, versioned with the engine, so a test that does not speak a protocol does
+not carry it.
+
+### HTTP — `Autobahn.Http`
+
+```csharp
+using var clients = HttpClientPool.CreatePool(count: 20, new HttpClientSettings
+{
+    BaseAddress = "https://api.example.com",
+    UseCookies = true          // one cookie jar per virtual user, so each copy is a session
+});
+
+var scenario = Scenario.Create("read", async context =>
+    clients.GetClient(context.ScenarioInfo).Send(
+        HttpRequest.Get($"/users/{ids.Next()}")
+            .WithHeader("Accept", "application/json")
+            .WithCheck(HttpCheck.Create("no error in body", (_, body) => !body.Contains("\"error\"")))
+            .WithTimeout(TimeSpan.FromSeconds(5)),
+        context));
+```
+
+`HttpRequest` is a *description*, not an `HttpRequestMessage` — one of those can only be sent
+once, so a scenario reusing it would fail on the second iteration.
+
+- **Checks decide what success means.** Without any, a 2xx is a success. With one, a 2xx that
+  fails it is a failure — because an API that answers 200 with `{"error": …}` is not
+  succeeding, and a test that says it is has measured the wrong thing. A check that needs the
+  body says so, and the body is read only when something asked for it.
+- **Sizes count the wire, not the body.** The request line, every header and both bodies. A
+  40-byte JSON answer with 400 bytes of headers is ten times the traffic the body suggests.
+- **A request timeout is its own outcome** (`-200`), distinct from a transport failure
+  (`-201`) and from the iteration's own timeout.
+- `.WithTracing()` logs the request and the answer while you work out why a test is failing.
+
+### Learning a test from a browser session
+
+The fastest way to a realistic test is not to write it. `autobahn record` opens a real
+browser, watches every request the page makes, and writes the scenario source:
+
+```bash
+autobahn record https://shop.example.com          # use the site, then close the window
+autobahn run    shop_example_com.csx --out ./reports
+```
+
+What comes out is a C# file you own and edit — not a recording the engine replays:
+
+```csharp
+var scenario = Scenario.Create("shop_example_com", async context =>
+    {
+        await Step.Run("get_api_products", context, () => client.Send(
+            HttpRequest.Get("/api/products"), context));
+
+        return await Step.Run("post_api_basket", context, () => client.Send(
+            HttpRequest.Post("/api/basket")
+                // TODO: this body was recorded once - drive it from a Feed.
+                .WithStringBody(@"{""sku"":""abc""}", "application/json"),
+            context));
+    })
+```
+
+Static assets, third-party requests and the browser's own `user-agent`/`sec-*` headers are
+filtered out; the recording's cookies and bearer tokens are dropped on purpose, because they
+belong to one session. Every generated file carries a header saying exactly what still has to
+be replaced before it measures anything.
+
+`--namespace MyTests` emits a `[ScenarioSource]` class instead of a script. `--headless`
+captures just the page load. `--browser-path` uses a Chromium the machine already has.
+
+This deliberately replaces *browser-driven* load testing. Running browsers under load makes
+the generator the bottleneck and measures the generator — a machine that can drive twenty
+browsers cannot tell you what a service does at two thousand users. Learn from one session,
+then hammer with an HTTP client.
+
+**From an existing HAR**, without a browser:
+
+```csharp
+var requests = Har.FromFile("session.har");   // static assets and the recording's own
+                                              // cookies and tokens are dropped by default
+var code = ScenarioCodeGenerator.FromHar(File.ReadAllText("session.har"));
+```
+
+### WebSockets — `Autobahn.WebSockets`
+
+Two shapes, because a socket is not request/response and pretending otherwise measures the
+wrong thing:
+
+```csharp
+// Request/response: the caller says which incoming message is the answer, because only the
+// protocol on top of the socket knows.
+await client.SendAndReceive(request, m => m.Text.StartsWith("reply:"), context, timeout);
+
+// Publish then consume: one scenario publishes, another consumes, and what is measured is
+// the delivery latency between them.
+await client.SendText(payload, context);
+await client.Receive(context);
+```
+
+### gRPC — `Autobahn.Grpc`
+
+Deliberately thin — the generated client is the API, and Autobahn adds the measurement:
+
+```csharp
+await GrpcCall.Unary("GetUser", context, ct => client.GetUserAsync(request, cancellationToken: ct));
+await GrpcCall.ServerStreaming("Watch", context, ct => client.Watch(request, cancellationToken: ct));
+```
+
+`GrpcChannelPool` builds channels with multiple HTTP/2 connections enabled, unlike gRPC's own
+default: a single connection has a concurrent-stream limit, and a load test that hits it
+measures its own queue rather than the server — which looks exactly like the server slowing
+down.
+
+### Message brokers — `Autobahn.Mqtt` and `Autobahn.Amqp`
+
+A broker is not request/response, and the interesting number is not how fast either side is —
+it is how long a message took to get from one to the other. So the publisher and the consumer
+are separate scenarios, and the pair that measures the gap between them is
+`PublishStamped` / `ReceiveStamped`:
+
+```csharp
+var publish = Scenario.Create("publish", async context =>
+        await publisher.PublishStamped("orders", $"order-{context.InvocationNumber}", context))
+    .WithInit(async _ =>
+    {
+        publisher = await AmqpChannel.ConnectAsync("amqp://localhost:5672/");
+        await publisher.DeclareQueueAsync("orders");
+    })
+    .WithLoadSimulations(Simulation.Inject(rate: 300, interval: TimeSpan.FromSeconds(1), during: TimeSpan.FromMinutes(2)));
+
+var consume = Scenario.Create("consume", async context =>
+        await consumer.ReceiveStamped(context, TimeSpan.FromSeconds(2)))
+    .WithInit(async _ =>
+    {
+        consumer = await AmqpChannel.ConnectAsync("amqp://localhost:5672/", inboxCapacity: 8192);
+        await consumer.DeclareQueueAsync("orders");
+        await consumer.ConsumeAsync("orders");
+    })
+    .WithLoadSimulations(Simulation.KeepConstant(copies: 4, during: TimeSpan.FromMinutes(2)));
+```
+
+What `consume` reports as its latency is the *delivery* latency — the time between the
+publisher sending and this consumer receiving — not the time it spent waiting for something to
+arrive. A plain `Receive` reports the waiting, which is a fact about your test rather than
+about the broker.
+
+- **A message with no stamp is a failure, not a zero.** It means something other than this test
+  is publishing to the queue, and calling that instant delivery would be the most flattering
+  possible lie.
+- **The inbox is bounded and says what it dropped.** A consumer slower than the broker delivers
+  loses messages; `Dropped` is how you find out, and every latency after a drop is optimistic.
+- **MQTT pools connections; AMQP pools channels over one connection.** An MQTT connection *is*
+  the session, so one per virtual user; an AMQP connection is a transport that multiplexes, and
+  a channel is the per-user thing.
+- The same request/response shape is there too — `PublishAndReceive`, with the caller saying
+  which delivered message is the answer, because only the protocol above knows.
+
+Both shapes, for both brokers, are in [`examples/MessageBrokers`](examples/MessageBrokers):
+
+```bash
+dotnet run --project examples/MessageBrokers -- mqtt localhost
+dotnet run --project examples/MessageBrokers -- amqp amqp://guest:guest@localhost:5672/
+```
+
+## Getting the numbers somewhere else
+
+There are no reporting sinks and there will not be. Two routes instead:
+
+**OpenTelemetry** — `Autobahn.OpenTelemetry` pushes every reporting interval over OTLP, and
+flushes the last one before the process exits:
+
+```csharp
+var context = AutobahnRunner.RegisterScenarios(scenario)
+    .WithOpenTelemetry(out var exporter, new AutobahnOtlpOptions { ServiceName = "checkout-load" });
+
+using (exporter) context.Run(args);
+```
+
+Everything is tagged with the session, suite, test, scenario and step, so one dashboard
+serves every run. It reaches every backend you already run rather than adding another.
+
+**The run artifact** — the versioned JSON document (see *Reports*) is what a CI job, a
+dashboard importer or a comparison tool reads.
+
+For anything else there is one callback, not a plugin contract:
+
+```csharp
+.WithIntervalObserver(record => Ship(record))   // never awaited; a failure is logged, not fatal
+```
+
+## Testing a test
+
+The engine schedules on a `TimeProvider`, so a test that exercises Autobahn itself does not
+have to wait out the plan it is exercising:
+
+```csharp
+var clock = new FakeTimeProvider();
+
+var run = Task.Run(() => AutobahnRunner.RegisterScenarios(scenario)
+    .WithTimeProvider(clock)
+    .RunWithResult());
+
+while (!run.IsCompleted) { clock.Advance(TimeSpan.FromMilliseconds(100)); await Task.Delay(1); }
+```
+
+Everything the engine *waits* on comes off that clock — the reporting tick, the warm-up
+cut-off, the gap between simulation intervals, the actor start jitter, the step and iteration
+timeouts, the shutdown poll and the runtime-metrics sampler. A thirty-second plan finishes in
+a fraction of a second, having really run all of its iterations.
+
+What does not come off it is measurement: latency is read from a `Stopwatch` nothing can
+move. So a faked clock changes *when* a run does things and never *what* it reports having
+observed — a scenario that genuinely takes 25 ms still shows up as 25 ms. That is also why
+the seam costs the run nothing: `Stopwatch.GetTimestamp` stays a static intrinsic on the path
+that runs once per measurement.
+
+This is for testing the harness, not for pretending a target is fast. Scenario code runs on
+whatever clock it chose, and a real HTTP call takes as long as it takes.
 
 ## Configuration
 
@@ -139,6 +632,32 @@ gated differently per environment:
 }
 ```
 
+Thresholds live there too. A rule under a scenario's settings block takes that scenario's
+name from the block it sits in; rules from the config *add* to the ones declared in code
+rather than replacing them, because the code says what the test is always about and the
+config says what this environment additionally demands:
+
+```jsonc
+{
+  "GlobalSettings": {
+    "Thresholds": [
+      { "Scope": "Scenario", "Subject": "ErrorRate", "Comparison": "LessThan", "Value": 0.01,
+        "StartsAfter": "00:00:30", "Name": "stays reliable" },
+      { "Scope": "StatusCode", "StatusCode": "500", "Subject": "StatusCodeCount",
+        "Comparison": "LessThan", "Value": 10, "AbortAfter": 3 }
+    ],
+    "ScenariosSettings": [
+      {
+        "ScenarioName": "add_to_basket",
+        "Thresholds": [
+          { "Scope": "Scenario", "Subject": "Percent99", "Comparison": "LessThan", "Value": 500 }
+        ]
+      }
+    ]
+  }
+}
+```
+
 ```csharp
 AutobahnRunner
     .RegisterScenarios(scenario)
@@ -146,8 +665,114 @@ AutobahnRunner
     .Run(args);          // --config, --infra and --target also work from the command line
 ```
 
-`CustomSettings` is handed to the scenario's `Init` as an `IConfiguration`, so a scenario
-binds it to whatever shape it likes.
+`CustomSettings` is handed to the scenario's `Init` as an `IConfiguration`, and
+`GetCustomSettings<T>()` binds it to a type of your own. There is a **global**
+`CustomSettings` block too, which every scenario sees and which a scenario's own block
+overrides key by key — so a shared base URL is written once:
+
+```jsonc
+{
+  "GlobalSettings": {
+    "CustomSettings": { "TargetHost": "https://staging.example.com", "Tenant": "acme" },
+    "ScenariosSettings": [
+      { "ScenarioName": "add_to_basket", "CustomSettings": { "TargetHost": "https://basket.staging" } }
+    ]
+  }
+}
+```
+
+### Precedence
+
+Weakest to strongest: **defaults → code → JSON config → `AUTOBAHN_` environment variables →
+command line**. Environment variables cover the scalar settings a CI job wants to change per
+run (`AUTOBAHN_REPORT_FOLDER`, `AUTOBAHN_TARGET_SCENARIOS`, `AUTOBAHN_REPORT_FORMATS`,
+`AUTOBAHN_REPORTING_INTERVAL`, `AUTOBAHN_TEST_SUITE`, `AUTOBAHN_TEST_NAME`,
+`AUTOBAHN_REPORT_NAME`, `AUTOBAHN_ENABLE_HINTS`); a load plan or a threshold belongs in the
+config file, where it can be read.
+
+"Why is the report folder that?" is answerable from the run itself — `--show-config`, or
+`ShowEffectiveConfig()` in code, prints every effective setting and the layer it came from:
+
+```
+Effective configuration:
+  TestSuite            checkout                              [JsonConfig]
+  TargetScenarios      add_to_basket                         [CommandLine]
+  ReportFolder         ./reports                             [Environment]
+  ReportingInterval    00:00:05                              [Default]
+```
+
+## Reports
+
+Five formats, all written to `./reports/{sessionId}/` unless you pin a folder:
+
+| Format | What it is |
+|--|--|
+| `Json` | **The run artifact.** The whole result as one versioned, machine-readable document. |
+| `Html` | A self-contained page: every asset inlined, the result embedded as its view model. |
+| `Txt` | The console summary, as a file. |
+| `Md` | The one that pastes into a pull request. |
+| `Csv` | One row per step, plus `_metrics.csv` and `_thresholds.csv` beside it. |
+
+The **run artifact** is the primary one — the UI replays it, run-to-run comparison consumes
+it, and a CI job asserts against it. Everything else is a rendering of the same data:
+
+```jsonc
+{
+  "SchemaVersion": 1,
+  "Producer": "Autobahn 0.1.0",
+  "CompletedAt": "2026-08-19T10:14:03.5+00:00",
+  "Result": { "FinalStats": { … }, "TimeLineHistory": [ … ], "Hints": [ … ] },
+  "Plans": [ { "ScenarioName": "checkout", "LoadSimulations": [ … ] } ]
+}
+```
+
+`SchemaVersion` is bumped when a field is removed or its meaning changes; adding one does
+not bump it, so a reader that ignores unknown fields keeps working.
+
+Autobahn only deletes files it wrote itself, and only its own log files — a pinned
+`WithReportFolder` accumulates reports under their timestamped names rather than being
+emptied on every run.
+
+**Without a terminal** — a CI log — there is no live table: interval progress goes out as
+one plain line per scenario through the ordinary logger, so it is in the log file too. With
+a terminal, the live table owns the screen while it is up and log lines raised in the
+meantime are replayed underneath it rather than drawn through it.
+
+## The load generator itself
+
+A load test that cannot show it was not itself the bottleneck is not evidence. Autobahn
+measures its own process (see *Metrics*) and, when the hints analyzer is on, says so when the
+numbers look like the generator's fault rather than the target's:
+
+```
+hint for LoadGenerator load generator:
+  The load generator's thread-pool queue reached 340 items (mean 84). Work waited to start,
+  and that wait is inside the latencies this run reported.
+```
+
+### What Autobahn assumes and what it sets
+
+| | |
+|--|--|
+| **Server GC, concurrent** | Set in the shipped projects. A workstation-GC generator pauses far more often, and every pause lands in a latency number. |
+| **`SustainedLowLatency`** | Set for the duration of a run, so a gen2 collection is deferred rather than taken mid-measurement. |
+| **Thread pool** | **Left alone.** Autobahn sets no minimum or maximum. |
+
+That last one is a decision, not an omission. The pool grows on demand, and forcing a large
+minimum hides the symptom of a scenario doing blocking work rather than fixing it — you get
+the same starvation later, with no queue to show for it.
+
+**What Autobahn assumes of a scenario** is that it is genuinely asynchronous. A scenario that
+blocks a pool thread — `.Result`, `.Wait()`, synchronous I/O, `Thread.Sleep` — takes a thread
+out of the pool for the duration, and at a few hundred concurrent copies that is the whole
+pool. The pool then grows by roughly one thread per half-second, so throughput climbs slowly
+towards the rate you asked for and every latency in between is queueing. It looks exactly like
+a target that degrades under load.
+
+`runtime.threadpool_queue` is what tells the two apart: a target getting slower does not fill
+the generator's queue. If you must block, raise the floor before the run —
+`ThreadPool.SetMinThreads` — and know that you are measuring a generator you have configured
+rather than one Autobahn did.
 
 ## Logging
 
@@ -185,6 +810,9 @@ The examples and the web UI have their own solutions and are not part of the roo
 
 ```bash
 dotnet build examples/Examples.slnx
+
+dotnet tool update --global Transpose.Compiler   # the web UI needs this
+./scripts/build-ui.sh Release                    # and stages it into the CLI
 ```
 
 ## Repository layout
@@ -192,11 +820,18 @@ dotnet build examples/Examples.slnx
 ```
 Autobahn.slnx              the root solution: the engine, the CLI, the tests
 src/Autobahn/              the engine and the public API
-src/Autobahn.Cli/          the `autobahn` dotnet tool (skeleton)
-src/Autobahn.Ui/           the Tesserae web UI (not started; own solution)
+src/Autobahn.Cli/          the `autobahn` dotnet tool
+src/Autobahn.Http/         the HTTP helper and HAR conversion
+src/Autobahn.WebSockets/   the WebSocket helper
+src/Autobahn.Grpc/         the gRPC helper
+src/Autobahn.Mqtt/         the MQTT helper
+src/Autobahn.Amqp/         the AMQP helper
+src/Autobahn.OpenTelemetry/ OTLP export
+src/Autobahn.Ui/           the Tesserae web UI (own solution; needs Transpose)
 src/Autobahn.Ui.Contracts/ wire DTOs shared by the host and the UI
 tests/Autobahn.Tests/      the test suite
 examples/                  runnable examples (own solution)
+performance/               BenchmarkDotNet guards for the hot paths (own solution)
 assets/                    images
 ```
 
@@ -205,8 +840,8 @@ when changing the engine.
 
 ## Roadmap
 
-[TODO.md](TODO.md) — features, fixes and improvements to bring in, plus the design of the
-Tesserae-based web UI that the CLI will host.
+[TODO.md](TODO.md) — features, fixes and improvements to bring in, and the specification the
+web UI was built from, with the places the implementation departed from it recorded.
 
 ## License
 

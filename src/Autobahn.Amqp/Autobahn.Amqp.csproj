@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- The AMQP helper, shipped as its own package for the same reason the others are: a test
+         that does not speak AMQP should not carry a broker client. -->
+
+    <PropertyGroup>
+        <RootNamespace>Autobahn.Amqp</RootNamespace>
+        <PackageId>Autobahn.Amqp</PackageId>
+        <Title>Autobahn AMQP</Title>
+        <Description>AMQP helpers for Autobahn: a pooled channel, request/response over a reply queue, and end-to-end delivery latency between a publisher and a consumer scenario.</Description>
+        <PackageTags>load-testing;performance-testing;amqp;rabbitmq;messaging</PackageTags>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageIcon>autobahn-icon.png</PackageIcon>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="../../README.md" Pack="true" Visible="false" PackagePath="" />
+        <None Include="../../LICENSE" Pack="true" Visible="false" PackagePath="" />
+        <None Include="../../assets/autobahn-icon.png" Pack="true" Visible="false" PackagePath="" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="RabbitMQ.Client" Version="7.2.2" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../Autobahn/Autobahn.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Autobahn.Tests" />
+    </ItemGroup>
+
+</Project>

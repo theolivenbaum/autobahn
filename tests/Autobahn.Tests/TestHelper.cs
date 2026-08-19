@@ -1,8 +1,45 @@
 using System.Collections.Concurrent;
 using System.Data;
+using Autobahn.Stats;
 using Microsoft.Extensions.Logging;
 
 namespace Autobahn.Tests;
+
+/// <summary>
+/// What a protocol helper sees when it is tested outside a run.
+/// </summary>
+/// <remarks>
+/// The helpers take an <see cref="IScenarioContext"/> for two things - the cancellation token
+/// and the metric registry - so testing one against a real run would be testing the engine
+/// again, slowly. This is the smallest thing that satisfies the interface.
+/// </remarks>
+internal sealed class FakeScenarioContext(CancellationToken token = default) : IScenarioContext
+{
+    public TestInfo TestInfo => TestInfo.Empty;
+    public HostInfo HostInfo => HostInfo.Empty;
+
+    public ScenarioInfo ScenarioInfo { get; } = new()
+    {
+        ThreadId = "copy_0",
+        ThreadNumber = 0,
+        ScenarioName = "scn",
+        ScenarioDuration = TimeSpan.FromSeconds(1),
+        CopyCount = 1,
+        ScenarioOperation = ScenarioOperation.Bombing
+    };
+
+    public ILogger Logger { get; } = Microsoft.Extensions.Logging.Abstractions.NullLogger.Instance;
+
+    public Autobahn.Metrics.IMetricRegistry Metrics { get; } =
+        new Autobahn.Internal.Domain.Metrics.MetricRegistry();
+
+    public int InvocationNumber => 1;
+    public Dictionary<string, object> Data { get; } = [];
+    public CancellationToken CancellationToken => token;
+
+    public void StopScenario(string scenarioName, string reason) { }
+    public void StopCurrentTest(string reason) { }
+}
 
 /// <summary>
 /// Collects log messages in memory so a test can assert on what a run reported.

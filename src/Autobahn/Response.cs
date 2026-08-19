@@ -35,13 +35,13 @@ public static class Response
         long sizeBytes = 0,
         string message = "",
         double latencyMs = 0) => new()
-    {
-        StatusCode = statusCode,
-        IsError = false,
-        SizeBytes = sizeBytes,
-        LatencyMs = latencyMs,
-        Message = message ?? string.Empty
-    };
+        {
+            StatusCode = statusCode,
+            IsError = false,
+            SizeBytes = sizeBytes,
+            LatencyMs = latencyMs,
+            Message = message ?? string.Empty
+        };
 
     /// <summary>A successful response carrying a payload for the rest of the iteration to use.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -51,14 +51,14 @@ public static class Response
         long sizeBytes = 0,
         string message = "",
         double latencyMs = 0) => new()
-    {
-        StatusCode = statusCode,
-        IsError = false,
-        SizeBytes = sizeBytes,
-        LatencyMs = latencyMs,
-        Message = message ?? string.Empty,
-        Payload = payload
-    };
+        {
+            StatusCode = statusCode,
+            IsError = false,
+            SizeBytes = sizeBytes,
+            LatencyMs = latencyMs,
+            Message = message ?? string.Empty,
+            Payload = payload
+        };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Response<object> Fail(
@@ -66,13 +66,13 @@ public static class Response
         string message = "",
         long sizeBytes = 0,
         double latencyMs = 0) => new()
-    {
-        StatusCode = statusCode,
-        IsError = true,
-        SizeBytes = sizeBytes,
-        LatencyMs = latencyMs,
-        Message = message ?? string.Empty
-    };
+        {
+            StatusCode = statusCode,
+            IsError = true,
+            SizeBytes = sizeBytes,
+            LatencyMs = latencyMs,
+            Message = message ?? string.Empty
+        };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static Response<T> Fail<T>(
@@ -81,12 +81,12 @@ public static class Response
         string message = "",
         long sizeBytes = 0,
         double latencyMs = 0) => new()
-    {
-        StatusCode = statusCode,
-        IsError = true,
-        SizeBytes = sizeBytes,
-        LatencyMs = latencyMs,
-        Message = message ?? string.Empty,
-        Payload = payload
-    };
+        {
+            StatusCode = statusCode,
+            IsError = true,
+            SizeBytes = sizeBytes,
+            LatencyMs = latencyMs,
+            Message = message ?? string.Empty,
+            Payload = payload
+        };
 }

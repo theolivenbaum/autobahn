@@ -1,5 +1,5 @@
-using HdrHistogram;
 using Autobahn.Stats;
+using HdrHistogram;
 
 namespace Autobahn.Internal.Domain.Stats;
 

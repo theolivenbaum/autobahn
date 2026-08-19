@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- Guards the two hot paths: publishing a measurement, and deciding how much load to
+         schedule. Not in the root solution, because a routine build should not compile the
+         benchmarks. See README.md in this folder for how to run them. -->
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <RootNamespace>Autobahn.Benchmarks</RootNamespace>
+        <IsPackable>false</IsPackable>
+        <!-- BenchmarkDotNet needs optimised code to measure anything meaningful. -->
+        <Optimize>true</Optimize>
+        <ServerGarbageCollection>true</ServerGarbageCollection>
+        <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="BenchmarkDotNet" Version="0.15.8" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../../src/Autobahn/Autobahn.csproj" />
+    </ItemGroup>
+
+</Project>

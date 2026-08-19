@@ -1,14 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-    <!-- The Autobahn command-line front end, published as a dotnet tool.
-         The terminal UI (Terminal.Gui) and the Kestrel-hosted web UI are roadmap items
-         (TODO.md, sections 6 and 8); this project currently carries the entry point and
-         the argument surface they will hang off. -->
+    <!-- The Autobahn command-line front end, published as a dotnet tool: runs a test from
+         an assembly or a script, learns one from a browser session, and hosts the live web
+         UI over Kestrel while a run is in flight. -->
 
     <PropertyGroup>
         <OutputType>Exe</OutputType>
+
         <RootNamespace>Autobahn.Cli</RootNamespace>
-        <AssemblyName>autobahn</AssemblyName>
+        <!-- Not "autobahn": assembly identities are compared case-insensitively, so an
+             assembly called that would shadow the engine's own "Autobahn" and every engine
+             type would fail to load. The command is still "autobahn" - that is
+             ToolCommandName, which has nothing to do with the assembly name. -->
+        <AssemblyName>Autobahn.Cli</AssemblyName>
 
         <PackAsTool>true</PackAsTool>
         <ToolCommandName>autobahn</ToolCommandName>
@@ -18,6 +22,11 @@
         <PackageTags>load-testing;performance-testing;dotnet-tool;cli</PackageTags>
         <PackageReadmeFile>README.md</PackageReadmeFile>
         <PackageIcon>autobahn-icon.png</PackageIcon>
+
+        <!-- Playwright ships PowerShell helpers under tools/, and NuGet warns once per file
+             that it will not auto-run them. It is not meant to: they are there for a person
+             to invoke. Nothing to fix, so the warning is silenced rather than tolerated. -->
+        <NoWarn>$(NoWarn);NU5111</NoWarn>
 
         <ServerGarbageCollection>true</ServerGarbageCollection>
         <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
@@ -30,13 +39,48 @@
     </ItemGroup>
 
     <ItemGroup>
-        <!-- Referenced ahead of use: the terminal dashboard is the next thing this project
+        <!-- Kestrel and minimal APIs for the live UI, without the Web SDK. A dotnet tool is
+             a console program that happens to serve one page while a test runs; the Web SDK
+             would bring a static-asset pipeline it has no use for, and global usings whose
+             HttpRequest collides with Autobahn.Http's own. -->
+        <FrameworkReference Include="Microsoft.AspNetCore.App" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.9.0" />
+        <PackageReference Include="Microsoft.Playwright" Version="1.62.0" />
+        <!-- Referenced ahead of use: a terminal dashboard is the next thing this project
              grows, and pinning the version now keeps the tool's dependency set decided. -->
         <PackageReference Include="Terminal.Gui" Version="2.4.17" />
     </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="../Autobahn/Autobahn.csproj" />
+        <!-- 'autobahn record' generates HTTP scenario source, which is the HTTP package's
+             code generator. The tool carries it; a test project only does if it wants to. -->
+        <ProjectReference Include="../Autobahn.Http/Autobahn.Http.csproj" />
+        <!-- The wire DTOs the live UI and this host both speak. Multi-targeted, so the host
+             takes the net10.0 build and the Tesserae app takes the netstandard2.0 one. -->
+        <ProjectReference Include="../Autobahn.Ui.Contracts/Autobahn.Ui.Contracts.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Autobahn.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- Served as the live view's favicon. A browser asks for /favicon.ico whether or not
+             the page mentions one, and a 404 in the console of a page about failures reads as
+             one of them. -->
+        <EmbeddedResource Include="../../assets/autobahn-icon.png" LogicalName="Autobahn.Cli.Ui.favicon.png" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <!-- The compiled Tesserae application, embedded so the whole UI travels with the
+             tool as one file. Absent from a clean clone, because building it needs the
+             Transpose compiler as a global tool - UiAssets serves an explanatory page then,
+             rather than a blank one. -->
+        <EmbeddedResource Include="Ui/wwwroot/**" Condition="Exists('Ui/wwwroot')" />
     </ItemGroup>
 
 </Project>

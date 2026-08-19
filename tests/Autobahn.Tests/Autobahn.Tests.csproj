@@ -13,10 +13,26 @@
 
     <ItemGroup>
         <PackageReference Include="TUnit" Version="1.65.31" />
+        <!-- FakeTimeProvider, so a test can drive a whole session forward without waiting for it. -->
+        <PackageReference Include="Microsoft.Extensions.TimeProvider.Testing" Version="10.9.0" />
+        <!-- The broker the MQTT tests run against, in this process. The helper package must
+             never carry it: a load test is a client, and shipping a broker inside a client
+             package would be shipping the thing under test. -->
+        <PackageReference Include="MQTTnet.Server" Version="5.2.0.1603" />
     </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="../../src/Autobahn/Autobahn.csproj" />
+        <!-- The CLI's argument parsing and scenario discovery are covered here rather than in
+             a project of their own: they are a hundred lines each, and a second test project
+             would double the build for them. -->
+        <ProjectReference Include="../../src/Autobahn.Cli/Autobahn.Cli.csproj" />
+        <ProjectReference Include="../../src/Autobahn.Http/Autobahn.Http.csproj" />
+        <ProjectReference Include="../../src/Autobahn.WebSockets/Autobahn.WebSockets.csproj" />
+        <ProjectReference Include="../../src/Autobahn.OpenTelemetry/Autobahn.OpenTelemetry.csproj" />
+        <ProjectReference Include="../../src/Autobahn.Grpc/Autobahn.Grpc.csproj" />
+        <ProjectReference Include="../../src/Autobahn.Mqtt/Autobahn.Mqtt.csproj" />
+        <ProjectReference Include="../../src/Autobahn.Amqp/Autobahn.Amqp.csproj" />
     </ItemGroup>
 
     <ItemGroup>

@@ -1,6 +1,7 @@
-using Microsoft.Extensions.Logging;
 using Autobahn.Internal.Domain.Stats;
+using Autobahn.Metrics;
 using Autobahn.Stats;
+using Microsoft.Extensions.Logging;
 
 namespace Autobahn.Internal.Domain;
 
@@ -18,6 +19,16 @@ internal sealed class ScenarioContextArgs
     public required Action<StopCommand> ExecStopCommand { get; init; }
     public required TestInfo TestInfo { get; init; }
     public required Func<HostInfo> GetHostInfo { get; init; }
+    public required IMetricRegistry Metrics { get; init; }
+
+    /// <summary>The clock the scheduler and its actors wait on. Not the one they measure with.</summary>
+    public required TimeProvider Time { get; init; }
+
+    /// <summary>
+    /// The remaining allowance of the counted simulation currently running, or null while a
+    /// timed one is. Set by the scheduler as it moves between segments; read by every actor.
+    /// </summary>
+    public IterationBudget? IterationBudget { get; set; }
 
     private long _currentTimeBucketTicks;
 

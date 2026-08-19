@@ -1,6 +1,7 @@
-using Spectre.Console;
 using Autobahn.Internal.Domain;
 using Autobahn.Internal.Infra;
+using Autobahn.Stats;
+using Spectre.Console;
 
 namespace Autobahn.Internal.Services.TestHost;
 
@@ -11,7 +12,8 @@ internal static class TestHostScenario
         SessionArgs sessionArgs, IReadOnlyList<RuntimeScenario> regScenarios) =>
         ScenarioFactory.ApplySettings(
             sessionArgs.ScenariosSettings,
-            ScenarioFactory.FilterTargetScenarios(sessionArgs.TargetScenarios, regScenarios));
+            ScenarioFactory.FilterTargetScenarios(sessionArgs.TargetScenarios, regScenarios),
+            sessionArgs.GlobalCustomSettings);
 
     public static async Task<Result<List<RuntimeScenario>>> InitScenarios(
         IGlobalDependency dep,
@@ -33,9 +35,9 @@ internal static class TestHostScenario
                 dep.LogInfo($"Start init scenario: {scn.ScenarioName}");
 
                 var scnInfo = ScenarioFactory.CreateScenarioInfo(
-                    scn.ScenarioName, scn.PlanedDuration, 0, ScenarioOperation.Init);
+                    scn.ScenarioName, scn.PlanedDuration, 0, scn.MaxCopiesCount, ScenarioOperation.Init);
 
-                var initScnContext = ScenarioFactory.CreateInitContext(scnInfo, baseContext, scn.CustomSettings);
+                var initScnContext = ScenarioFactory.CreateInitContext(scnInfo, baseContext, scn.CustomSettings, scn.GlobalCustomSettings);
 
                 if (consoleStatus is not null)
                 {
@@ -54,6 +56,43 @@ internal static class TestHostScenario
             // Init failing means the target system is not in the state the test assumes,
             // so the run stops rather than producing numbers nobody can trust.
             return Result<List<RuntimeScenario>>.Fail(new ScenarioError.InitScenarioError(ex));
+        }
+    }
+
+    /// <summary>
+    /// Runs each scenario's completion hook with that scenario's final numbers.
+    /// </summary>
+    /// <remarks>
+    /// After the stats are final and before the session returns, so a hook can push a result
+    /// somewhere or decide a build has failed. A hook that throws is logged and the rest still
+    /// run: one scenario's reporting webhook being down is not a reason to lose the other
+    /// scenarios' results.
+    /// </remarks>
+    public static async Task RunCompletionHooks(
+        IGlobalDependency dep,
+        IBaseContext baseContext,
+        IReadOnlyList<RuntimeScenario> scenarios,
+        SessionStats finalStats)
+    {
+        foreach (var scn in scenarios)
+        {
+            if (scn.OnCompleted is null) continue;
+
+            var stats = finalStats.ScenarioStats.FirstOrDefault(x => x.ScenarioName == scn.ScenarioName);
+            if (stats is null) continue;
+
+            var scnInfo = ScenarioFactory.CreateScenarioInfo(
+                scn.ScenarioName, scn.GetExecutedDuration(), 0, scn.MaxCopiesCount, ScenarioOperation.Clean);
+
+            try
+            {
+                await scn.OnCompleted(ScenarioFactory.CreateCompletionContext(scnInfo, baseContext, stats))
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                dep.LogWarn(ex, $"Completion hook failed for scenario: {scn.ScenarioName}");
+            }
         }
     }
 
@@ -77,9 +116,9 @@ internal static class TestHostScenario
             }
 
             var scnInfo = ScenarioFactory.CreateScenarioInfo(
-                scn.ScenarioName, scn.GetExecutedDuration(), 0, ScenarioOperation.Clean);
+                scn.ScenarioName, scn.GetExecutedDuration(), 0, scn.MaxCopiesCount, ScenarioOperation.Clean);
 
-            var cleanScnContext = ScenarioFactory.CreateInitContext(scnInfo, baseContext, scn.CustomSettings);
+            var cleanScnContext = ScenarioFactory.CreateInitContext(scnInfo, baseContext, scn.CustomSettings, scn.GlobalCustomSettings);
 
             try
             {

@@ -1,0 +1,153 @@
+name: CI
+
+# Build and test on every push and pull request to main. Publishing is a separate
+# workflow triggered by a tag, so a merge never accidentally releases anything.
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # A second push to the same branch makes the first run's answer irrelevant.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # No matrix: one target framework, on purpose. global.json pins the SDK, and
+      # the test project runs on Microsoft.Testing.Platform through the runner
+      # opt-in that same file carries.
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      # The full suite spends minutes of wall clock in Task.Delay, so a pull
+      # request gets the fast subset and main gets everything. A slow gate is a
+      # gate people learn to ignore.
+      - name: Test (fast subset)
+        if: github.event_name == 'pull_request'
+        run: dotnet test --no-build --configuration Release -- --treenode-filter "/*/*/*/*[Category!=slow]"
+
+      - name: Test (everything)
+        if: github.event_name != 'pull_request'
+        run: dotnet test --no-build --configuration Release
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report
+          path: tests/Autobahn.Tests/bin/Release/net10.0/TestResults/**
+          if-no-files-found: ignore
+          retention-days: 14
+
+  examples:
+    name: Examples build
+    runs-on: ubuntu-latest
+
+    # Their own solution, out of the default build - but still gated, so they
+    # cannot rot unnoticed against an API change.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build the examples
+        run: dotnet build examples/Examples.slnx --configuration Release
+
+  ui:
+    name: Web UI build
+    runs-on: ubuntu-latest
+
+    # Its own job because it needs a compiler nothing else does. The engine and the
+    # CLI must keep building without it - that is the whole reason the UI is not in
+    # the root solution - so this job proves the UI still compiles rather than being
+    # a step the rest of the build depends on.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Install the Transpose compiler
+        run: |
+          dotnet tool update --global Transpose.Compiler
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+
+      - name: Build and stage the UI
+        run: ./scripts/build-ui.sh Release
+
+      # With the assets staged, this is the CLI as it actually ships: the UI is an
+      # embedded resource, and a build that cannot embed it is a broken release.
+      - name: Build the CLI with the UI embedded
+        run: dotnet build src/Autobahn.Cli/Autobahn.Cli.csproj --configuration Release
+
+  quality:
+    name: Format and vulnerabilities
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      # .editorconfig is the source of truth; this is what makes it one.
+      - name: Verify formatting
+        run: dotnet format --verify-no-changes --verbosity diagnostic
+
+      # Fails the build on a known-vulnerable dependency, transitive ones included.
+      # The dependency set is eight packages, so there is no excuse for carrying one.
+      - name: Check for vulnerable packages
+        run: |
+          dotnet restore
+          dotnet list package --vulnerable --include-transitive 2>&1 | tee vulnerable.txt
+          if grep -q "has the following vulnerable packages" vulnerable.txt; then
+            echo "::error::A dependency has a known vulnerability."
+            exit 1
+          fi
+
+  pack:
+    name: Pack
+    runs-on: ubuntu-latest
+    needs: build
+
+    # Packing on every green build, not only on a tag: a packaging problem found at
+    # release time is found at the worst possible moment.
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Pack
+        run: dotnet pack --configuration Release --output ./artifacts
+
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages
+          path: ./artifacts/*.nupkg
+          retention-days: 14

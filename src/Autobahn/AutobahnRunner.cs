@@ -1,13 +1,14 @@
 using System.Net.Http;
 using System.Runtime;
-using Microsoft.Extensions.Configuration;
-using Microsoft.Extensions.Logging;
 using Autobahn.Configuration;
 using Autobahn.Internal;
 using Autobahn.Internal.Json;
 using Autobahn.Internal.Services;
 using Autobahn.Plugins;
 using Autobahn.Stats;
+using Autobahn.Thresholds;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 
 namespace Autobahn;
 
@@ -124,6 +125,18 @@ public static class AutobahnRunner
         context with { ConfigureLogging = configureLogging };
 
     /// <summary>
+    /// Adds a logging provider beside whatever logging is already configured, rather than
+    /// instead of it - which is what <see cref="WithLogging"/> does.
+    /// </summary>
+    /// <remarks>
+    /// For something that wants to watch the run's log without taking it over: a live view
+    /// tailing it, a test asserting on it, an in-memory buffer. The rolling file log keeps
+    /// being written either way.
+    /// </remarks>
+    public static AutobahnContext WithLoggerProvider(this AutobahnContext context, ILoggerProvider provider) =>
+        context with { AdditionalLoggerProviders = [.. context.AdditionalLoggerProviders, provider] };
+
+    /// <summary>
     /// Turns on the hints analyzer, which inspects the final statistics and points out ways
     /// the test was under-instrumented. The default is off.
     /// </summary>
@@ -138,8 +151,100 @@ public static class AutobahnRunner
         context with { EnableStopTestForcibly = enable };
 
     /// <summary>
-    /// Applies command-line arguments over the context: <c>-c/--config</c>, <c>-i/--infra</c>
-    /// and <c>-t/--target</c>.
+    /// Ends the run when the token is cancelled. The session still stops cleanly and still
+    /// writes its reports: cancelling asks for an early finish, not for the results to be
+    /// thrown away.
+    /// </summary>
+    public static AutobahnContext WithCancellationToken(this AutobahnContext context, CancellationToken cancellationToken) =>
+        context with { CancellationToken = cancellationToken };
+
+    /// <summary>
+    /// Calls back with each reporting interval's numbers as the run produces them - the live
+    /// half of getting a run's results somewhere else. The end-of-run half is the run
+    /// artifact, which the returned <c>SessionResult</c> also carries.
+    /// </summary>
+    /// <remarks>
+    /// A slow or throwing observer never holds up the run: it is invoked without being waited
+    /// on, and a failure is logged rather than propagated.
+    /// </remarks>
+    public static AutobahnContext WithIntervalObserver(
+        this AutobahnContext context, Func<Stats.TimeLineHistoryRecord, Task> observer) =>
+        context with { OnInterval = observer };
+
+    /// <summary>
+    /// Calls back once with the run as it was finally resolved - the effective settings and
+    /// where each came from, the scenarios that will run and the plans they will run - before
+    /// any load is generated.
+    /// </summary>
+    /// <remarks>
+    /// Awaited, unlike the interval observer: this happens once, before the clock starts, so
+    /// there is no measurement for it to distort and a watcher that needs to be ready before
+    /// the first interval can be. A failure is logged and the run proceeds.
+    /// </remarks>
+    public static AutobahnContext WithSessionStartObserver(
+        this AutobahnContext context, Func<Stats.SessionStartInfo, Task> observer) =>
+        context with { OnSessionStart = observer };
+
+    /// <summary>
+    /// Replaces the clock the engine schedules on, so a test can run a whole session without
+    /// waiting for it.
+    /// </summary>
+    /// <remarks>
+    /// Everything the engine *waits* on goes through this: the reporting tick, the warm-up
+    /// cut-off, the gap between simulation intervals, the shutdown poll and the runtime-metrics
+    /// sampler. What does not is the measuring: latency still comes from
+    /// <see cref="System.Diagnostics.Stopwatch"/>, so a faked clock changes when a run does
+    /// things, never what it reports having measured.
+    ///
+    /// This makes a fake clock useful for the engine's own timing, not for the scenario under
+    /// test - user code runs on whatever clock it chose, and a real HTTP call takes as long as
+    /// it takes.
+    /// </remarks>
+    public static AutobahnContext WithTimeProvider(this AutobahnContext context, TimeProvider timeProvider) =>
+        context with { TimeProvider = timeProvider };
+
+    /// <summary>
+    /// Prints every effective setting and the layer its value came from before the run starts,
+    /// so "why is the report folder that" is answerable without reading three files. The same
+    /// thing happens when the command line carries <c>--show-config</c>.
+    /// </summary>
+    public static AutobahnContext ShowEffectiveConfig(this AutobahnContext context) =>
+        context with { ShowEffectiveConfig = true };
+
+    /// <summary>
+    /// Adds pass/fail rules to the run. They are checked on every reporting interval and again
+    /// at the end; a rule that fails fails the run, and one built with <c>AbortingAfter</c>
+    /// ends it early.
+    /// </summary>
+    public static AutobahnContext WithThresholds(this AutobahnContext context, params Threshold[] thresholds) =>
+        context with { Thresholds = [.. context.Thresholds, .. thresholds] };
+
+    /// <summary>
+    /// Leaves the process exit code alone when a threshold fails. By default a failed
+    /// threshold sets it to <see cref="Constants.ThresholdFailedExitCode"/>, which is what
+    /// makes the run usable as a CI gate; the run result says so either way.
+    /// </summary>
+    public static AutobahnContext WithoutThresholdExitCode(this AutobahnContext context) =>
+        context with { EnableThresholdExitCode = false };
+
+    /// <summary>
+    /// Stops collecting the load generator's own CPU, memory, GC, thread-pool and socket
+    /// counters. They are collected by default, and are what let a run show it was not itself
+    /// the bottleneck; turn them off only when something else is already watching the process.
+    /// </summary>
+    public static AutobahnContext WithoutRuntimeMetrics(this AutobahnContext context) =>
+        context with { EnableRuntimeMetrics = false };
+
+    /// <summary>
+    /// Leaves Ctrl+C to the runtime instead of turning it into an early, reported stop.
+    /// The default is to handle it.
+    /// </summary>
+    public static AutobahnContext WithoutCancelKeyPress(this AutobahnContext context) =>
+        context with { EnableCancelKeyPress = false };
+
+    /// <summary>
+    /// Applies command-line arguments over the context: <c>-c/--config</c>, <c>-i/--infra</c>,
+    /// <c>-t/--target</c> and <c>--show-config</c>.
     /// </summary>
     internal static AutobahnContext ExecuteCliArgs(this AutobahnContext context, IReadOnlyList<string> args)
     {
@@ -150,6 +255,8 @@ public static class AutobahnRunner
 
         if (cliArgs.TargetScenarios.Count > 0)
             context = ContextResolver.SetTargetScenarios(cliArgs.TargetScenarios, context);
+
+        if (cliArgs.ShowConfig) context = context.ShowEffectiveConfig();
 
         return context;
     }

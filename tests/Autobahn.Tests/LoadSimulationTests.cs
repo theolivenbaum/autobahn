@@ -17,7 +17,7 @@ public class LoadSimulationTests
             Simulation.RampingConstant(0, Time.Seconds(20))
         ];
 
-        var plan = SimulationPlan.Create(simulations);
+        var plan = SimulationPlan.Create("test_scn", simulations);
         await Assert.That(plan.IsOk).IsTrue();
 
         var items = plan.Value;
@@ -41,7 +41,7 @@ public class LoadSimulationTests
             Simulation.RampingInject(0, Time.Seconds(1), Time.Seconds(20))
         ];
 
-        var plan = SimulationPlan.Create(simulations);
+        var plan = SimulationPlan.Create("test_scn", simulations);
         await Assert.That(plan.IsOk).IsTrue();
 
         var items = plan.Value;
@@ -73,7 +73,7 @@ public class LoadSimulationTests
     [Test]
     public async Task A_negative_copies_count_is_rejected()
     {
-        var plan = SimulationPlan.Create([Simulation.KeepConstant(-1, Time.Seconds(10))]);
+        var plan = SimulationPlan.Create("test_scn", [Simulation.KeepConstant(-1, Time.Seconds(10))]);
 
         await Assert.That(plan.IsError).IsTrue();
         await Assert.That(plan.Error).IsTypeOf<LoadSimulationError.CopiesCountIsNegative>();
@@ -82,7 +82,7 @@ public class LoadSimulationTests
     [Test]
     public async Task A_negative_rate_is_rejected()
     {
-        var plan = SimulationPlan.Create([Simulation.Inject(-1, Time.Seconds(1), Time.Seconds(10))]);
+        var plan = SimulationPlan.Create("test_scn", [Simulation.Inject(-1, Time.Seconds(1), Time.Seconds(10))]);
 
         await Assert.That(plan.IsError).IsTrue();
         await Assert.That(plan.Error).IsTypeOf<LoadSimulationError.RateIsNegative>();
@@ -91,7 +91,7 @@ public class LoadSimulationTests
     [Test]
     public async Task A_duration_below_the_minimum_is_rejected()
     {
-        var plan = SimulationPlan.Create([Simulation.KeepConstant(1, TimeSpan.FromMilliseconds(10))]);
+        var plan = SimulationPlan.Create("test_scn", [Simulation.KeepConstant(1, TimeSpan.FromMilliseconds(10))]);
 
         await Assert.That(plan.IsError).IsTrue();
         await Assert.That(plan.Error).IsTypeOf<LoadSimulationError.DurationIsSmallerThanMin>();
@@ -100,7 +100,7 @@ public class LoadSimulationTests
     [Test]
     public async Task An_interval_longer_than_the_simulation_is_rejected()
     {
-        var plan = SimulationPlan.Create([Simulation.Inject(1, Time.Seconds(20), Time.Seconds(10))]);
+        var plan = SimulationPlan.Create("test_scn", [Simulation.Inject(1, Time.Seconds(20), Time.Seconds(10))]);
 
         await Assert.That(plan.IsError).IsTrue();
         await Assert.That(plan.Error).IsTypeOf<LoadSimulationError.IntervalIsBiggerThanDuration>();
@@ -122,8 +122,14 @@ public class LoadSimulationExhaustivenessTests
         () => Simulation.RampingInject(1, Time.Seconds(1), Time.Seconds(10)),
         () => Simulation.Inject(1, Time.Seconds(1), Time.Seconds(10)),
         () => Simulation.InjectRandom(1, 2, Time.Seconds(1), Time.Seconds(10)),
+        () => Simulation.IterationsForConstant(1, 10),
+        () => Simulation.IterationsForInject(1, Time.Seconds(1), 10),
         () => Simulation.Pause(Time.Seconds(10))
     ];
+
+    /// <summary>The timed cases only: the counted ones have no duration by construction.</summary>
+    public static IEnumerable<Func<LoadSimulation>> TimedCases() =>
+        AllCases().Where(make => make().IterationCount is null);
 
     [Test]
     public async Task Every_case_the_hierarchy_declares_is_covered_by_these_tests()
@@ -136,9 +142,19 @@ public class LoadSimulationExhaustivenessTests
     }
 
     [Test]
-    [MethodDataSource(nameof(AllCases))]
-    public async Task Every_case_has_a_duration(LoadSimulation simulation) =>
+    [MethodDataSource(nameof(TimedCases))]
+    public async Task Every_timed_case_has_a_duration(LoadSimulation simulation) =>
         await Assert.That(simulation.Duration).IsEqualTo(Time.Seconds(10));
+
+    [Test]
+    [MethodDataSource(nameof(AllCases))]
+    public async Task A_case_has_either_a_duration_or_an_iteration_count_but_never_both(LoadSimulation simulation)
+    {
+        var hasDuration = simulation.Duration > TimeSpan.Zero;
+        var hasIterations = simulation.IterationCount is not null;
+
+        await Assert.That(hasDuration ^ hasIterations).IsTrue();
+    }
 
     [Test]
     [MethodDataSource(nameof(AllCases))]
@@ -154,7 +170,7 @@ public class LoadSimulationExhaustivenessTests
     [MethodDataSource(nameof(AllCases))]
     public async Task Every_case_can_be_validated_and_planned(LoadSimulation simulation)
     {
-        var plan = SimulationPlan.Create([simulation]);
+        var plan = SimulationPlan.Create("test_scn", [simulation]);
 
         await Assert.That(plan.IsOk).IsTrue();
         await Assert.That(plan.Value.Count).IsEqualTo(1);
@@ -174,7 +190,7 @@ public class LoadSimulationExhaustivenessTests
     [MethodDataSource(nameof(AllCases))]
     public async Task Every_case_can_be_scheduled(LoadSimulation simulation)
     {
-        var plan = SimulationPlan.Create([simulation]).Value;
+        var plan = SimulationPlan.Create("test_scn", [simulation]).Value;
 
         var (command, count) = Internal.Domain.Scheduler.ScenarioScheduler.Schedule(
             (min, _) => min, plan[0], timeProgress: 50, currentConstActorCount: 1);

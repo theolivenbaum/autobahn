@@ -16,7 +16,8 @@ internal static class ScenarioActorPool
             var actorIndex = fromIndex + i;
 
             var scenarioInfo = ScenarioFactory.CreateScenarioInfo(
-                scenario.ScenarioName, scenario.PlanedDuration, actorIndex, scnCtx.ScenarioOperation);
+                scenario.ScenarioName, scenario.PlanedDuration, actorIndex,
+                scenario.MaxCopiesCount, scnCtx.ScenarioOperation);
 
             actors[i] = new ScenarioActor(scnCtx, scenarioInfo);
         }

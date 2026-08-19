@@ -1,7 +1,7 @@
 using System.Data;
-using Microsoft.Extensions.Configuration;
 using Autobahn.Internal.Infra;
 using Autobahn.Stats;
+using Microsoft.Extensions.Configuration;
 
 namespace Autobahn.Internal.Services.TestHost;
 
@@ -77,7 +77,8 @@ internal static class WorkerPlugins
         try
         {
             var pluginStatsTask = Task.WhenAll(dep.WorkerPlugins.Select(plugin => plugin.GetStats(stats)));
-            var finishedTask = await Task.WhenAny(pluginStatsTask, Task.Delay(Constants.GetPluginStatsTimeout))
+            var finishedTask = await Task
+                .WhenAny(pluginStatsTask, Task.Delay(Constants.GetPluginStatsTimeout, dep.Time))
                 .ConfigureAwait(false);
 
             if (ReferenceEquals(finishedTask, pluginStatsTask)) return await pluginStatsTask.ConfigureAwait(false);

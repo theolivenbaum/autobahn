@@ -1,12 +1,13 @@
 using System.Diagnostics;
-using Spectre.Console;
-using Microsoft.Extensions.Logging;
-using ZLogger;
 using Autobahn.Internal.Domain;
 using Autobahn.Internal.Domain.Scheduler;
 using Autobahn.Internal.Infra;
 using Autobahn.Internal.Services.Reports;
+using Autobahn.Metrics;
 using Autobahn.Stats;
+using Microsoft.Extensions.Logging;
+using Spectre.Console;
+using ZLogger;
 
 namespace Autobahn.Internal.Services.TestHost;
 
@@ -29,6 +30,25 @@ internal static class TestHostConsole
         }
 
         return AnsiConsole.Status().StartAsync(msg, ctx => runAction(ctx));
+    }
+
+    /// <summary>
+    /// Every effective setting and the layer its value came from.
+    /// </summary>
+    /// <remarks>
+    /// Printed through the ordinary logger rather than as a table, so it lands in the log file
+    /// too - which is where somebody reading a CI run afterwards will look for it.
+    /// </remarks>
+    public static void PrintEffectiveConfig(IGlobalDependency dep, SessionArgs sessionArgs)
+    {
+        if (sessionArgs.EffectiveSettings.Count == 0) return;
+
+        dep.LogInfo("Effective configuration:");
+
+        var width = sessionArgs.EffectiveSettings.Max(x => x.Name.Length);
+
+        foreach (var setting in sessionArgs.EffectiveSettings)
+            dep.LogInfo($"  {setting.Name.PadRight(width)}  {setting.Value}  [{setting.Source}]");
     }
 
     public static void PrintContextInfo(IGlobalDependency dep, SessionArgs sessionArgs)
@@ -61,6 +81,44 @@ internal static class TestHostConsole
             table.AddColumn(new TableColumn("ok data transfer (KB)"));
 
             return table;
+        }
+
+        /// <summary>
+        /// The load generator's own health, beside the scenario numbers. Live, this is the
+        /// column that says whether a sagging throughput is the target's fault or the
+        /// generator's, which is the whole reason the runtime metrics exist.
+        /// </summary>
+        private static Table BuildMetricsTable()
+        {
+            var table = new Table { Border = TableBorder.Square };
+
+            table.AddColumn(new TableColumn("metric"));
+            table.AddColumn(new TableColumn("current"));
+            table.AddColumn(new TableColumn("min"));
+            table.AddColumn(new TableColumn("mean"));
+            table.AddColumn(new TableColumn("max"));
+
+            table.Caption = new TableTitle("load generator");
+
+            return table;
+        }
+
+        private static void RenderMetricsTable(Table table, IReadOnlyList<MetricStats> metrics)
+        {
+            table.Rows.Clear();
+
+            foreach (var metric in metrics)
+            {
+                var unit = string.IsNullOrEmpty(metric.Unit) ? "" : $" {metric.Unit}";
+                var isCounter = metric.Kind == MetricKind.Counter;
+
+                table.AddRow(
+                    ConsoleRender.EscapeMarkup(metric.Name),
+                    $"{ConsoleRender.BlueColor(metric.Current)}{unit}",
+                    isCounter ? "" : $"{ConsoleRender.BlueColor(metric.Min)}{unit}",
+                    isCounter ? "" : $"{ConsoleRender.BlueColor(metric.Mean)}{unit}",
+                    isCounter ? "" : $"{ConsoleRender.BlueColor(metric.Max)}{unit}");
+            }
         }
 
         private static void RenderTable(Table table, IReadOnlyList<ScenarioStats> scenariosStats)
@@ -96,10 +154,52 @@ internal static class TestHostConsole
             }
         }
 
-        private static TimeSpan GetMaxScnDuration(bool isWarmUp, IReadOnlyList<ScenarioScheduler> scnSchedulers) =>
-            isWarmUp
-                ? ScenarioFactory.GetMaxWarmUpDuration(scnSchedulers.Select(x => x.Scenario))
-                : ScenarioFactory.GetMaxDuration(scnSchedulers.Select(x => x.Scenario));
+        /// <summary>
+        /// How long the table should say the run will take, or null when the plan cannot say -
+        /// which is the case as soon as one scenario is counted in iterations rather than timed.
+        /// </summary>
+        private static TimeSpan? GetMaxScnDuration(bool isWarmUp, IReadOnlyList<ScenarioScheduler> scnSchedulers)
+        {
+            if (isWarmUp) return ScenarioFactory.GetMaxWarmUpDuration(scnSchedulers.Select(x => x.Scenario));
+
+            if (scnSchedulers.Any(x => x.Scenario.HasCountedSimulations)) return null;
+
+            return ScenarioFactory.GetMaxDuration(scnSchedulers.Select(x => x.Scenario));
+        }
+
+        private static TableTitle DurationTitle(TimeSpan elapsed, TimeSpan? maxDuration) =>
+            maxDuration is { } max
+                ? new TableTitle($"duration: ({elapsed:hh\\:mm\\:ss} - {max:hh\\:mm\\:ss})")
+                : new TableTitle($"duration: ({elapsed:hh\\:mm\\:ss})");
+
+        /// <summary>
+        /// One interval's numbers as plain log lines, for when there is no terminal to draw a
+        /// table on.
+        /// </summary>
+        /// <remarks>
+        /// A CI log is the case that matters most and the one a live table serves worst: it
+        /// scrolls, it has no cursor to move, and a redrawn table becomes hundreds of
+        /// near-identical frames. So the same information goes out one line per scenario,
+        /// through the ordinary logger, which is also what keeps it in the log file.
+        /// </remarks>
+        public static void PrintIntervalProgress(
+            IGlobalDependency dep, TimeSpan elapsed, IReadOnlyList<ScenarioStats> scenariosStats)
+        {
+            if (dep.ApplicationType == ApplicationType.Console) return;
+
+            foreach (var scn in scenariosStats)
+            {
+                var ok = scn.Ok.Request;
+                var fail = scn.Fail.Request;
+                var latency = scn.Ok.Latency;
+
+                dep.LogInfo(
+                    $"[{elapsed:hh\\:mm\\:ss}] {scn.ScenarioName}: "
+                    + $"{scn.LoadSimulationStats.SimulationName} {scn.LoadSimulationStats.Value}, "
+                    + $"ok {ok.Count} ({ok.RPS}/s), fail {fail.Count} ({fail.RPS}/s), "
+                    + $"p50 {latency.Percent50} ms, p99 {latency.Percent99} ms");
+            }
+        }
 
         public static void Display(
             IGlobalDependency dep,
@@ -113,10 +213,16 @@ internal static class TestHostConsole
             var table = BuildTable();
             table.Caption = new TableTitle("real-time stats table");
 
-            var liveTable = AnsiConsole.Live(table);
+            var metricsTable = BuildMetricsTable();
+
+            var liveTable = AnsiConsole.Live(new Rows(table, metricsTable));
             liveTable.AutoClear = false;
             liveTable.Overflow = VerticalOverflow.Ellipsis;
             liveTable.Cropping = VerticalOverflowCropping.Bottom;
+
+            // Nothing else may write to the terminal until the table comes down; log lines
+            // raised in the meantime are replayed underneath it rather than through it.
+            ConsoleRender.BeginLiveDisplay();
 
             var stopWatch = Stopwatch.StartNew();
             var refreshTableCounter = 0;
@@ -128,17 +234,26 @@ internal static class TestHostConsole
                     try
                     {
                         var currentTime = stopWatch.Elapsed;
+                        var withinPlan = maxDuration is null || currentTime <= maxDuration;
 
-                        if (currentTime < maxDuration && refreshTableCounter == 0)
+                        if (withinPlan && refreshTableCounter == 0)
+                        {
                             RenderTable(table, scnSchedulers.Select(x => x.ConsoleScenarioStats).ToArray());
 
-                        if (currentTime <= maxDuration)
+                            // The registry's own snapshot, not the manager's: closing an
+                            // interval belongs to the reporting manager, and doing it here
+                            // would take the numbers out of the timeline behind the report.
+                            RenderMetricsTable(metricsTable, dep.Metrics.Registry.Global());
+                        }
+
+                        if (withinPlan)
                         {
-                            table.Title = new TableTitle($"duration: ({currentTime:hh\\:mm\\:ss} - {maxDuration:hh\\:mm\\:ss})");
+                            table.Title = DurationTitle(currentTime, maxDuration);
                             ctx.Refresh();
                         }
 
-                        await Task.Delay(1_000, cancelToken).ConfigureAwait(false);
+                        await Task.Delay(Constants.ConsoleRefreshInterval, dep.Time, cancelToken)
+                            .ConfigureAwait(false);
 
                         refreshTableCounter++;
                         if (refreshTableCounter >= Constants.ConsoleRefreshTableCounter) refreshTableCounter = 0;
@@ -154,9 +269,13 @@ internal static class TestHostConsole
                     }
                 }
 
-                table.Title = new TableTitle($"duration: ({maxDuration:hh\\:mm\\:ss} - {maxDuration:hh\\:mm\\:ss})");
+                table.Title = DurationTitle(maxDuration ?? stopWatch.Elapsed, maxDuration);
                 ctx.Refresh();
-            });
+            }).ContinueWith(
+                static _ => ConsoleRender.EndLiveDisplay(),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
     }
 }

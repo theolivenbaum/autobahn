@@ -1,5 +1,5 @@
-using Microsoft.Extensions.Logging;
 using Autobahn.Internal;
+using Microsoft.Extensions.Logging;
 
 namespace Autobahn.Tests;
 

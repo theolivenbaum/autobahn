@@ -7,12 +7,23 @@
          has to target it too. LangVersion stays at latest - records, init-only setters
          and file-scoped namespaces are all available. See TODO.md, section 8.
 
-         Not in the root solution yet; the UI is a later milestone. -->
+         Multi-targeted: netstandard2.0 for the UI, net10.0 so the host references it
+         natively rather than through a compatibility shim. The DTOs are plain either way -
+         this is a schema both ends have to agree on, not a place for clever C#. -->
 
     <PropertyGroup>
-        <TargetFramework>netstandard2.0</TargetFramework>
+        <!-- Cleared explicitly: Directory.Build.props sets TargetFramework for the whole
+             repository, and a project that has both is single-targeted by the singular one. -->
+        <TargetFramework></TargetFramework>
+        <TargetFrameworks>netstandard2.0;net10.0</TargetFrameworks>
         <RootNamespace>Autobahn.Ui.Contracts</RootNamespace>
         <IsPackable>false</IsPackable>
+        <Nullable>enable</Nullable>
+        <LangVersion>latest</LangVersion>
     </PropertyGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Autobahn.Tests" />
+    </ItemGroup>
 
 </Project>

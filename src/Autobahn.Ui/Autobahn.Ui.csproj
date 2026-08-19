@@ -1,8 +1,12 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Transpose.Build.Target/26.8.4125">
 
     <!-- The Tesserae application, compiled to JS/CSS/HTML by the Transpose compiler and
-         embedded into Autobahn.Cli as resources. netstandard2.0 for the same reason as
-         Autobahn.Ui.Contracts. See TODO.md, section 8.
+         embedded into Autobahn.Cli as resources.
+
+         The SDK is Transpose's, not Microsoft's: Transpose replaces the base class library
+         with one that compiles to JavaScript, which is an SDK-level substitution rather than
+         a package reference. netstandard2.0 for the same reason - it is what Tesserae and
+         Transpose build against. See TODO.md, section 8.
 
          Not in the root solution: building it needs the Transpose compiler installed as a
          global tool, which a clean clone does not have. -->
@@ -10,11 +14,36 @@
     <PropertyGroup>
         <TargetFramework>netstandard2.0</TargetFramework>
         <RootNamespace>Autobahn.Ui</RootNamespace>
+        <AssemblyName>Autobahn.Ui</AssemblyName>
         <IsPackable>false</IsPackable>
+        <LangVersion>latest</LangVersion>
+        <Nullable>disable</Nullable>
+        <ImplicitUsings>disable</ImplicitUsings>
+        <DebugType>None</DebugType>
+        <DebugSymbols>false</DebugSymbols>
+        <NoWarn>$(NoWarn);1591</NoWarn>
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="../Autobahn.Ui.Contracts/Autobahn.Ui.Contracts.csproj" />
+        <PackageReference Include="Transpose.BCL" Version="26.8.4156" />
+        <PackageReference Include="Transpose.Core" Version="26.7.3304" />
+        <PackageReference Include="Tesserae" Version="2026.8.69728" />
+        <PackageReference Include="Transpose.HttpClient" Version="26.8.4128" />
+    </ItemGroup>
+
+    <!-- The shared wire DTOs, compiled into this assembly rather than referenced as one.
+         Both ends still build the same source files, which is the whole point of the contracts
+         project - but they have to be *in* the assembly Transpose compiles, because it emits
+         reflection metadata only for that one. A referenced project's types arrive without it,
+         and Newtonsoft then deserializes every record to its own defaults without failing,
+         which is the worst way for a wire format to go wrong.
+
+         IsExternalInit is excluded: Transpose's base class library has its own, and two in one
+         compilation is a conflict. -->
+    <ItemGroup>
+        <Compile Include="../Autobahn.Ui.Contracts/*.cs"
+                 Exclude="../Autobahn.Ui.Contracts/IsExternalInit.cs"
+                 LinkBase="Contracts" />
     </ItemGroup>
 
 </Project>

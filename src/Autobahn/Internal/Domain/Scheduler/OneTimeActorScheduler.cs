@@ -23,7 +23,11 @@ internal sealed class OneTimeActorScheduler(ScenarioContextArgs scnCtx) : IDispo
 
     public void AskToStop() => ScenarioActorPool.AskToStop(_actorPool);
 
-    public void Dispose() => AskToStop();
+    public void Dispose()
+    {
+        AskToStop();
+        foreach (var actor in _actorPool) actor.Dispose();
+    }
 
     private ScenarioActor[] CreateActors(int count, int fromIndex) =>
         ScenarioActorPool.CreateActors(scnCtx, count, fromIndex);

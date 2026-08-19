@@ -1,7 +1,7 @@
 using System.Data;
+using Autobahn.Plugins;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Autobahn.Plugins;
 
 namespace Autobahn.Tests;
 

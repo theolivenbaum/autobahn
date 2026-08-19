@@ -1,8 +1,8 @@
+using Autobahn.Stats;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using ZLogger;
 using ZLogger.Providers;
-using Autobahn.Stats;
 
 namespace Autobahn.Internal.Infra;
 
@@ -60,6 +60,10 @@ internal static class LoggerBuilder
                 AttachDefaultFileLogger(builder, settings.Folder);
             }
 
+            // Added rather than substituted, so something that only wants to watch the log
+            // does not stop it being written.
+            foreach (var provider in context.AdditionalLoggerProviders) builder.AddProvider(provider);
+
             // The infra config can raise or lower levels per category without touching code.
             if (context.InfraConfig?.GetSection("Logging") is { } loggingSection && loggingSection.Exists())
                 builder.AddConfiguration(loggingSection);
@@ -96,23 +100,29 @@ internal static class LoggerBuilder
     };
 
     /// <summary>
-    /// Empties the run's output folder before the run starts.
+    /// Removes the log files a previous run left in this folder, so a pinned report folder
+    /// does not accumulate one log per day forever.
     /// </summary>
     /// <remarks>
-    /// Inherited behaviour, kept for parity, and a sharp edge: with the default folder
-    /// (<c>reports/{sessionId}</c>) this is a no-op because the folder is new every run, but
-    /// a pinned <c>WithReportFolder</c> is deleted recursively on every run. Narrowing it to
-    /// deleting only the files Autobahn itself wrote is TODO.md section 5.
+    /// The fork point deleted the whole folder recursively. With the default
+    /// <c>reports/{sessionId}</c> that is a no-op, because the folder is new every run - but a
+    /// pinned <c>WithReportFolder</c> pointed Autobahn at a directory it then destroyed on
+    /// every run, along with anything else that happened to be in it. Only the files Autobahn
+    /// itself writes are its to delete, and only the log files: reports carry a timestamp in
+    /// their name and are meant to accumulate.
     /// </remarks>
     private static void CleanFolder(string folder)
     {
         try
         {
-            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+            if (!Directory.Exists(folder)) return;
+
+            foreach (var file in Directory.EnumerateFiles(folder, $"{Constants.LogFilePrefix}-*.txt"))
+                File.Delete(file);
         }
         catch
         {
-            // A folder we cannot clear is not a reason to fail the run; the log just appends.
+            // A file we cannot remove is not a reason to fail the run; the log just appends.
         }
     }
 }

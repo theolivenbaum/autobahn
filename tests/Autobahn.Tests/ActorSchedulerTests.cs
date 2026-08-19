@@ -1,9 +1,10 @@
-using Microsoft.Extensions.Logging.Abstractions;
 using Autobahn.Internal.Domain;
 using Autobahn.Internal.Domain.Concurrency;
+using Autobahn.Internal.Domain.Metrics;
 using Autobahn.Internal.Domain.Scheduler;
 using Autobahn.Internal.Domain.Stats;
 using Autobahn.Stats;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace Autobahn.Tests;
 
@@ -35,7 +36,9 @@ internal static class SchedulerTestContext
             ScenarioStatsActor = statsActor,
             ExecStopCommand = _ => { },
             TestInfo = TestInfo.Empty,
-            GetHostInfo = () => HostInfo.Empty
+            GetHostInfo = () => HostInfo.Empty,
+            Metrics = new MetricRegistry(),
+            Time = TimeProvider.System
         };
     }
 }

@@ -14,6 +14,7 @@ public static class Scenario
         Clean = null,
         Run = run,
         WarmUpDuration = Constants.DefaultWarmUpDuration,
+        CompletionTimeout = Constants.DefaultCompletionTimeout,
         LoadSimulations = [Simulation.KeepConstant(Constants.DefaultCopiesCount, Constants.DefaultSimulationDuration)],
         RestartIterationOnFail = true,
         MaxFailCount = Constants.ScenarioMaxFailCount
@@ -30,6 +31,7 @@ public static class Scenario
         Clean = null,
         Run = null,
         WarmUpDuration = null,
+        CompletionTimeout = Constants.DefaultCompletionTimeout,
         LoadSimulations = [Simulation.KeepConstant(Constants.DefaultCopiesCount, Constants.DefaultSimulationDuration)],
         RestartIterationOnFail = true,
         MaxFailCount = Constants.ScenarioMaxFailCount
@@ -76,4 +78,40 @@ public static class Scenario
     /// </summary>
     public static ScenarioProps WithMaxFailCount(this ScenarioProps scenario, int maxFailCount) =>
         scenario with { MaxFailCount = maxFailCount };
+
+    /// <summary>
+    /// This scenario's share of the combined load, so several scenarios can model one user
+    /// population without the author hand-computing rates.
+    /// </summary>
+    /// <remarks>
+    /// Weights are relative: 80 and 20 mean the same as 8 and 2. Each scenario's own plan is
+    /// scaled by its share, so give the scenarios in one population the same plan and let the
+    /// weights split it. Either every scenario in a run declares a weight or none does.
+    /// </remarks>
+    public static ScenarioProps WithWeight(this ScenarioProps scenario, int weight) =>
+        scenario with { Weight = weight };
+
+    /// <summary>
+    /// Runs when this scenario finishes, with its final statistics - the place to push a
+    /// result somewhere or fail a build without wrapping the whole runner.
+    /// </summary>
+    public static ScenarioProps WithCompletionHook(
+        this ScenarioProps scenario, Func<IScenarioCompletionContext, Task> onCompleted) =>
+        scenario with { OnCompleted = onCompleted };
+
+    /// <summary>
+    /// How long in-flight iterations get to finish after the load plan ends. The default is
+    /// 10 seconds; iterations still running after it are abandoned and left out of the
+    /// numbers, with a warning saying how many.
+    /// </summary>
+    public static ScenarioProps WithCompletionTimeout(this ScenarioProps scenario, TimeSpan timeout) =>
+        scenario with { CompletionTimeout = timeout };
+
+    /// <summary>
+    /// Cancels an iteration - and each step inside it - once it has run for this long, and
+    /// records it as a timeout rather than as a generic error, so a report can tell "slow"
+    /// from "broken". No timeout by default.
+    /// </summary>
+    public static ScenarioProps WithIterationTimeout(this ScenarioProps scenario, TimeSpan timeout) =>
+        scenario with { IterationTimeout = timeout };
 }

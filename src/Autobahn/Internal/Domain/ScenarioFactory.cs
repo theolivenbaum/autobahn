@@ -1,8 +1,9 @@
 using System.Text;
+using Autobahn.Configuration;
+using Autobahn.Metrics;
+using Autobahn.Stats;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Autobahn.Configuration;
-using Autobahn.Stats;
 
 namespace Autobahn.Internal.Domain;
 
@@ -49,18 +50,28 @@ internal static class ScenarioFactory
             .Bind(x => CheckWarmUpDuration(scnDuration, x));
 
     public static ScenarioInfo CreateScenarioInfo(
-        string scenarioName, TimeSpan duration, int threadNumber, ScenarioOperation operation) => new()
-    {
-        ThreadId = $"{scenarioName}_{threadNumber}",
-        ThreadNumber = threadNumber,
-        ScenarioName = scenarioName,
-        ScenarioDuration = duration,
-        ScenarioOperation = operation
-    };
+        string scenarioName, TimeSpan duration, int threadNumber, int copyCount, ScenarioOperation operation) => new()
+        {
+            ThreadId = $"{scenarioName}_{threadNumber}",
+            ThreadNumber = threadNumber,
+            CopyCount = copyCount,
+            ScenarioName = scenarioName,
+            ScenarioDuration = duration,
+            ScenarioOperation = operation
+        };
 
-    public static Result<RuntimeScenario> CreateScenario(ScenarioProps props)
+    public static Result<RuntimeScenario> CreateScenario(ScenarioProps props) => CreateScenario(props, [], 0);
+
+    /// <summary>
+    /// Builds a runnable scenario, applying this scenario's share of the combined load when
+    /// the run is weighted.
+    /// </summary>
+    public static Result<RuntimeScenario> CreateScenario(
+        ScenarioProps props, IReadOnlyList<LoadSimulation> weighted, int totalWeight)
     {
-        var plan = SimulationPlan.Create(props.LoadSimulations);
+        var simulations = totalWeight > 0 ? weighted : props.LoadSimulations;
+
+        var plan = SimulationPlan.Create(props.ScenarioName, simulations);
         if (plan.IsError) return Result<RuntimeScenario>.Fail(plan.Error);
 
         var planedDuration = SimulationPlan.GetPlanedDuration(plan.Value);
@@ -74,6 +85,7 @@ internal static class ScenarioFactory
             Init = props.Init,
             Clean = props.Clean,
             Run = props.Run,
+            OnCompleted = props.OnCompleted,
             LoadSimulations = plan.Value,
             WarmUpDuration = props.WarmUpDuration,
             PlanedDuration = planedDuration,
@@ -81,7 +93,11 @@ internal static class ScenarioFactory
             CustomSettings = string.Empty,
             IsInitialized = false,
             RestartIterationOnFail = props.RestartIterationOnFail,
-            MaxFailCount = props.MaxFailCount
+            MaxFailCount = props.MaxFailCount,
+            Weight = props.Weight,
+            MaxCopiesCount = SimulationPlan.GetMaxCopiesCount(plan.Value),
+            CompletionTimeout = props.CompletionTimeout ?? Constants.DefaultCompletionTimeout,
+            IterationTimeout = props.IterationTimeout
         });
     }
 
@@ -90,7 +106,45 @@ internal static class ScenarioFactory
         var checkedScenarios = CheckDuplicateScenarioName(scenarios);
         if (checkedScenarios.IsError) return Result<List<RuntimeScenario>>.Fail(checkedScenarios.Error);
 
-        return Result.Sequence(checkedScenarios.Value.Select(CreateScenario));
+        var weights = CheckWeights(checkedScenarios.Value);
+        if (weights.IsError) return Result<List<RuntimeScenario>>.Fail(weights.Error);
+
+        var totalWeight = weights.Value;
+
+        return Result.Sequence(checkedScenarios.Value.Select(props =>
+        {
+            var weighted = totalWeight > 0
+                ? SimulationPlan.ApplyWeight(props.LoadSimulations, props.Weight!.Value, totalWeight)
+                : props.LoadSimulations;
+
+            return CreateScenario(props, weighted, totalWeight);
+        }));
+    }
+
+    /// <summary>
+    /// Returns the total weight to divide the combined load by, or zero when the run is
+    /// unweighted. A run where only some scenarios declare a weight has no defined total.
+    /// </summary>
+    internal static Result<int> CheckWeights(IReadOnlyList<ScenarioProps> scenarios)
+    {
+        var weighted = scenarios.Where(x => x.Weight is not null).ToList();
+        if (weighted.Count == 0) return Result<int>.Ok(0);
+
+        var unweighted = scenarios.Where(x => x.Weight is null).ToList();
+
+        if (unweighted.Count > 0)
+        {
+            return Result<int>.Fail(new ScenarioError.MixedScenarioWeights(
+                weighted.Select(x => x.ScenarioName).ToList(),
+                unweighted.Select(x => x.ScenarioName).ToList()));
+        }
+
+        var invalid = weighted.FirstOrDefault(x => x.Weight!.Value <= 0);
+
+        if (invalid is not null)
+            return Result<int>.Fail(new ScenarioError.InvalidScenarioWeight(invalid.ScenarioName, invalid.Weight!.Value));
+
+        return Result<int>.Ok(weighted.Sum(x => x.Weight!.Value));
     }
 
     public static List<RuntimeScenario> FilterTargetScenarios(
@@ -99,12 +153,16 @@ internal static class ScenarioFactory
 
     /// <summary>Overlays the JSON config's per-scenario settings onto the scenarios that match by name.</summary>
     public static List<RuntimeScenario> ApplySettings(
-        IReadOnlyList<ScenarioSetting> settings, IEnumerable<RuntimeScenario> scenarios)
+        IReadOnlyList<ScenarioSetting> settings,
+        IEnumerable<RuntimeScenario> scenarios,
+        string globalCustomSettings = "")
     {
         return scenarios.Select(scenario =>
         {
             var setting = settings.FirstOrDefault(x => x.ScenarioName == scenario.ScenarioName);
-            return setting is null ? scenario : Apply(scenario, setting);
+            var withGlobal = scenario with { GlobalCustomSettings = globalCustomSettings };
+
+            return setting is null ? withGlobal : Apply(withGlobal, setting);
         }).ToList();
 
         static RuntimeScenario Apply(RuntimeScenario scenario, ScenarioSetting settings)
@@ -113,7 +171,7 @@ internal static class ScenarioFactory
 
             if (settings.LoadSimulationsSettings is { } configured)
             {
-                var plan = SimulationPlan.Create(configured);
+                var plan = SimulationPlan.Create(scenario.ScenarioName, configured);
 
                 // The config's simulations were validated when the config was read; a failure
                 // here would mean the config model and the validator disagree.
@@ -127,6 +185,7 @@ internal static class ScenarioFactory
                 LoadSimulations = simulations,
                 WarmUpDuration = settings.WarmUpDuration,
                 PlanedDuration = SimulationPlan.GetPlanedDuration(simulations),
+                MaxCopiesCount = SimulationPlan.GetMaxCopiesCount(simulations),
                 CustomSettings = settings.CustomSettings ?? "",
                 MaxFailCount = settings.MaxFailCount ?? Constants.ScenarioMaxFailCount
             };
@@ -159,22 +218,59 @@ internal static class ScenarioFactory
 
     /// <summary>Builds the context a scenario's init and clean functions receive.</summary>
     public static IScenarioInitContext CreateInitContext(
-        ScenarioInfo scnInfo, IBaseContext context, string customSettings) =>
-        new ScenarioInitContext(scnInfo, context, ParseCustomSettings(customSettings));
+        ScenarioInfo scnInfo, IBaseContext context, string customSettings, string globalCustomSettings = "") =>
+        new ScenarioInitContext(scnInfo, context, ParseCustomSettings(customSettings, globalCustomSettings));
 
-    private static IConfiguration ParseCustomSettings(string settings)
+    /// <summary>
+    /// The scenario's own settings layered over the run-wide ones, as one configuration.
+    /// </summary>
+    /// <remarks>
+    /// Later sources win in <c>IConfiguration</c>, so the scenario's own block is added last:
+    /// a shared base URL in the global block is overridden by a scenario that needs a
+    /// different one, without the scenario having to repeat everything else.
+    /// </remarks>
+    private static IConfiguration ParseCustomSettings(string settings, string globalSettings)
     {
-        try
+        var builder = new ConfigurationBuilder();
+
+        AddJson(builder, globalSettings);
+        AddJson(builder, settings);
+
+        return builder.Build();
+
+        static void AddJson(IConfigurationBuilder builder, string json)
         {
-            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(settings));
-            return new ConfigurationBuilder().AddJsonStream(stream).Build();
+            if (string.IsNullOrWhiteSpace(json)) return;
+
+            try
+            {
+                // Parsed here rather than left to Build(): a stream provider does not read
+                // until the whole configuration is built, so a malformed block would take the
+                // valid one beside it down with it. Settings that are not JSON contribute
+                // nothing instead, and the scenario sees its own defaults.
+                using (System.Text.Json.JsonDocument.Parse(json)) { }
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                return;
+            }
+
+            builder.AddJsonStream(new MemoryStream(Encoding.UTF8.GetBytes(json)));
         }
-        catch
-        {
-            // A scenario with no custom settings, or with settings that are not valid JSON,
-            // gets an empty configuration rather than a failed run.
-            return new ConfigurationBuilder().Build();
-        }
+    }
+
+    /// <summary>Builds the context a scenario's completion hook receives.</summary>
+    public static IScenarioCompletionContext CreateCompletionContext(
+        ScenarioInfo scnInfo, IBaseContext context, ScenarioStats stats) =>
+        new ScenarioCompletionContext(scnInfo, context, stats);
+
+    private sealed class ScenarioCompletionContext(
+        ScenarioInfo scenarioInfo, IBaseContext context, ScenarioStats stats) : IScenarioCompletionContext
+    {
+        public TestInfo TestInfo => context.TestInfo;
+        public ScenarioInfo ScenarioInfo => scenarioInfo;
+        public ILogger Logger => context.Logger;
+        public ScenarioStats Stats => stats;
     }
 
     private sealed class ScenarioInitContext(
@@ -185,5 +281,13 @@ internal static class ScenarioFactory
         public HostInfo HostInfo => context.GetHostInfo();
         public IConfiguration CustomSettings => customSettings;
         public ILogger Logger => context.Logger;
+        public IMetricRegistry Metrics => context.Metrics;
+
+        public T GetCustomSettings<T>() where T : new()
+        {
+            var settings = new T();
+            customSettings.Bind(settings);
+            return settings;
+        }
     }
 }

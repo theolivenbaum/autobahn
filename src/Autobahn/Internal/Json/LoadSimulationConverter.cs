@@ -47,6 +47,13 @@ internal sealed class LoadSimulationConverter : JsonConverter<LoadSimulation>
             nameof(LoadSimulation.InjectRandom) =>
                 new LoadSimulation.InjectRandom(Int(name, values, 0, 4), Int(name, values, 1, 4), Duration(name, values, 2, 4), Duration(name, values, 3, 4)),
 
+            nameof(LoadSimulation.IterationsForConstant) =>
+                new LoadSimulation.IterationsForConstant(Int(name, values, 0, 2), Int(name, values, 1, 2)),
+
+            nameof(LoadSimulation.IterationsForInject) =>
+                new LoadSimulation.IterationsForInject(
+                    Int(name, values, 0, 3), Duration(name, values, 1, 3), Int(name, values, 2, 3)),
+
             nameof(LoadSimulation.Pause) =>
                 new LoadSimulation.Pause(Duration(name, values, 0, 1)),
 
@@ -61,11 +68,15 @@ internal sealed class LoadSimulationConverter : JsonConverter<LoadSimulation>
         switch (value)
         {
             case LoadSimulation.RampingConstant x: WriteCase(writer, nameof(LoadSimulation.RampingConstant), x.Copies, x.During); break;
-            case LoadSimulation.KeepConstant x:    WriteCase(writer, nameof(LoadSimulation.KeepConstant), x.Copies, x.During); break;
-            case LoadSimulation.RampingInject x:   WriteCase(writer, nameof(LoadSimulation.RampingInject), x.Rate, x.Interval, x.During); break;
-            case LoadSimulation.Inject x:          WriteCase(writer, nameof(LoadSimulation.Inject), x.Rate, x.Interval, x.During); break;
-            case LoadSimulation.InjectRandom x:    WriteCase(writer, nameof(LoadSimulation.InjectRandom), x.MinRate, x.MaxRate, x.Interval, x.During); break;
-            case LoadSimulation.Pause x:           WriteCase(writer, nameof(LoadSimulation.Pause), x.During); break;
+            case LoadSimulation.KeepConstant x: WriteCase(writer, nameof(LoadSimulation.KeepConstant), x.Copies, x.During); break;
+            case LoadSimulation.RampingInject x: WriteCase(writer, nameof(LoadSimulation.RampingInject), x.Rate, x.Interval, x.During); break;
+            case LoadSimulation.Inject x: WriteCase(writer, nameof(LoadSimulation.Inject), x.Rate, x.Interval, x.During); break;
+            case LoadSimulation.InjectRandom x: WriteCase(writer, nameof(LoadSimulation.InjectRandom), x.MinRate, x.MaxRate, x.Interval, x.During); break;
+            case LoadSimulation.IterationsForConstant x:
+                WriteCase(writer, nameof(LoadSimulation.IterationsForConstant), x.Copies, x.Iterations); break;
+            case LoadSimulation.IterationsForInject x:
+                WriteCase(writer, nameof(LoadSimulation.IterationsForInject), x.Rate, x.Interval, x.Iterations); break;
+            case LoadSimulation.Pause x: WriteCase(writer, nameof(LoadSimulation.Pause), x.During); break;
             default: throw new JsonException($"Unknown load simulation: {value.GetType().Name}");
         }
 

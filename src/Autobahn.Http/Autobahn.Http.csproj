@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <!-- The HTTP helper, shipped as its own package so a test that does not speak HTTP does
+         not carry it - and versioned with the engine because it is in this repository. -->
+
+    <PropertyGroup>
+        <RootNamespace>Autobahn.Http</RootNamespace>
+        <PackageId>Autobahn.Http</PackageId>
+        <Title>Autobahn HTTP</Title>
+        <Description>HTTP helpers for Autobahn: a request builder, response checks, wire-accurate size accounting and pooled clients.</Description>
+        <PackageTags>load-testing;performance-testing;http</PackageTags>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <PackageIcon>autobahn-icon.png</PackageIcon>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <None Include="../../README.md" Pack="true" Visible="false" PackagePath="" />
+        <None Include="../../LICENSE" Pack="true" Visible="false" PackagePath="" />
+        <None Include="../../assets/autobahn-icon.png" Pack="true" Visible="false" PackagePath="" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="../Autobahn/Autobahn.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Autobahn.Tests" />
+    </ItemGroup>
+
+</Project>

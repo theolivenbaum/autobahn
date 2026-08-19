@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="../src/Autobahn/Autobahn.csproj" />
+  <Project Path="Autobahn.Benchmarks/Autobahn.Benchmarks.csproj" />
+</Solution>

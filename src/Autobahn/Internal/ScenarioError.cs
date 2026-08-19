@@ -52,6 +52,32 @@ internal abstract record ScenarioError : AppError
         public override string Message => $"Clean scenario error: '{Exception}'";
     }
 
+    /// <summary>
+    /// Weights split the combined load between scenarios, so a run where only some
+    /// scenarios declare one has no defined total to split.
+    /// </summary>
+    public sealed record MixedScenarioWeights(
+        IReadOnlyList<string> Weighted,
+        IReadOnlyList<string> Unweighted) : ScenarioError
+    {
+        public override string Message =>
+            $"Scenario{(Weighted.Count == 1 ? "" : "s")} {Names(Weighted)} "
+            + $"{(Weighted.Count == 1 ? "declares" : "declare")} a weight but "
+            + $"scenario{(Unweighted.Count == 1 ? "" : "s")} {Names(Unweighted)} "
+            + $"{(Unweighted.Count == 1 ? "does" : "do")} not. A weight is a scenario's share of the combined "
+            + "load, so either every scenario in the run declares one or none does.";
+
+        private static string Names(IReadOnlyList<string> names) =>
+            string.Join(", ", names.Select(x => $"'{x}'"));
+    }
+
+    public sealed record InvalidScenarioWeight(string ScenarioName, int Weight) : ScenarioError
+    {
+        public override string Message =>
+            $"Scenario '{ScenarioName}' has a weight of {Weight}. A weight is a share of the combined load, "
+            + "so it has to be bigger than 0.";
+    }
+
     public sealed record WarmUpDurationIsBiggerScnDuration(
         string ScenarioName,
         TimeSpan WarmUpDuration,

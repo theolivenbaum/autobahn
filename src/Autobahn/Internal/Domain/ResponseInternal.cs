@@ -22,6 +22,16 @@ internal static class ResponseInternal
         Message = ex.Message
     };
 
+    /// <summary>An iteration Autobahn stopped waiting for, distinct from a cancelled operation.</summary>
+    public static Response<T> FailIterationTimeout<T>() => new()
+    {
+        StatusCode = Constants.IterationTimeoutStatusCode,
+        IsError = true,
+        SizeBytes = 0,
+        LatencyMs = 0,
+        Message = Constants.IterationTimeoutMessage
+    };
+
     public static Response<T> FailTimeout<T>() => new()
     {
         StatusCode = Constants.TimeoutStatusCode,

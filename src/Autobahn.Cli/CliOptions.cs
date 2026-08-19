@@ -1,0 +1,89 @@
+using Autobahn.Stats;
+using Microsoft.Extensions.Logging;
+
+namespace Autobahn.Cli;
+
+/// <summary>What the command line asked for.</summary>
+internal sealed record CliOptions
+{
+    /// <summary>The verb: <c>run</c>, <c>list</c>, <c>record</c>, <c>help</c> or <c>version</c>.</summary>
+    public required string Command { get; init; }
+
+    /// <summary>The assembly or script holding the scenarios.</summary>
+    public string? Source { get; init; }
+
+    public IReadOnlyList<string> TargetScenarios { get; init; } = [];
+    public string? ConfigPath { get; init; }
+    public string? InfraConfigPath { get; init; }
+    public string? ReportFolder { get; init; }
+    public string? ReportFileName { get; init; }
+    public IReadOnlyList<ReportFormat> ReportFormats { get; init; } = [];
+    public TimeSpan? ReportingInterval { get; init; }
+    public LogLevel? MinimumLogLevel { get; init; }
+    public string? TestSuite { get; init; }
+    public string? TestName { get; init; }
+    public bool ShowConfig { get; init; }
+    public bool NoRuntimeMetrics { get; init; }
+    public bool NoReports { get; init; }
+
+    // record only.
+
+    /// <summary>Records without a visible browser window. Only the page load is captured then.</summary>
+    public bool Headless { get; init; }
+
+    /// <summary>Keeps images, stylesheets, fonts and scripts in the recording.</summary>
+    public bool IncludeAssets { get; init; }
+
+    /// <summary>Records only requests to the origin the session started on. On by default.</summary>
+    public bool SameOriginOnly { get; init; } = true;
+
+    /// <summary>
+    /// Emits a class in this namespace instead of a script. Null writes a <c>.csx</c> the CLI
+    /// can run straight away.
+    /// </summary>
+    public string? RecordNamespace { get; init; }
+
+    /// <summary>
+    /// A Chromium to use instead of the one Playwright installed for itself.
+    /// </summary>
+    /// <remarks>
+    /// CI images and dev containers often already carry a browser, and it is rarely the exact
+    /// build the Playwright package pins - which otherwise fails with a message about a
+    /// missing executable rather than about a version.
+    /// </remarks>
+    public string? BrowserPath { get; init; }
+
+    /// <summary>Keeps the browser's own user-agent and sec-* headers in the recording.</summary>
+    public bool KeepBrowserHeaders { get; init; }
+
+    // run only: the live UI.
+
+    /// <summary>
+    /// Serves the live web UI beside the run.
+    /// </summary>
+    /// <remarks>
+    /// Null follows the terminal: on when there is one, off when there is not, because CI is
+    /// the case where nobody is going to open it and the port is a liability.
+    /// </remarks>
+    public bool? Ui { get; init; }
+
+    /// <summary>The port to serve on. 0 picks a free one.</summary>
+    public int UiPort { get; init; }
+
+    /// <summary>
+    /// Serves on every interface rather than loopback.
+    /// </summary>
+    /// <remarks>
+    /// Its own flag, and a loud one: this surface can stop the run, and that is not something
+    /// to put on 0.0.0.0 by accident.
+    /// </remarks>
+    public bool UiPublic { get; init; }
+
+    /// <summary>Opens the printed URL once the server is up.</summary>
+    public bool UiOpen { get; init; }
+
+    /// <summary>Set when the command line could not be understood; nothing else is valid then.</summary>
+    public string? Error { get; init; }
+
+    public static CliOptions Failed(string error) => new() { Command = "help", Error = error };
+}

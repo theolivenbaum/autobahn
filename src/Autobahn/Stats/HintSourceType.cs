@@ -4,5 +4,8 @@ namespace Autobahn.Stats;
 public enum HintSourceType
 {
     Scenario = 0,
-    WorkerPlugin = 1
+    WorkerPlugin = 1,
+
+    /// <summary>The load generator itself, rather than anything the test declared.</summary>
+    LoadGenerator = 2
 }

@@ -1,5 +1,5 @@
-using Microsoft.Extensions.Configuration;
 using Autobahn.Plugins.Network;
+using Microsoft.Extensions.Configuration;
 
 namespace Autobahn.Tests;
 
@@ -110,6 +110,7 @@ public class ClientPoolTests
     {
         ThreadId = $"s_{threadNumber}",
         ThreadNumber = threadNumber,
+        CopyCount = 2,
         ScenarioName = "s",
         ScenarioDuration = TimeSpan.Zero,
         ScenarioOperation = ScenarioOperation.Bombing
