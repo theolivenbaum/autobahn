@@ -33,7 +33,8 @@ internal sealed class ProvenanceLog
     {
         null => "",
         string s => s,
-        System.Collections.IEnumerable list and not string => string.Join(", ", list.Cast<object?>()),
+        System.Collections.IEnumerable list and not string =>
+            list.Cast<object?>().ToArray() is { Length: > 0 } items ? string.Join(", ", items) : "(none)",
         _ => value.ToString() ?? ""
     };
 }

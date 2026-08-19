@@ -95,7 +95,7 @@ internal static class Constants
     // Thresholds.
 
     /// <summary>The process exit code a run sets when one of its thresholds failed.</summary>
-    public const int ThresholdFailedExitCode = 2;
+    public const int ThresholdFailedExitCode = AutobahnExitCode.ThresholdFailed;
 
     public const string StopReasonThreshold = "a threshold was violated";
 

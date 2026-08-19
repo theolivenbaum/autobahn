@@ -332,23 +332,25 @@ are what make a load test usable as a CI gate.
 
 ## 6. Configuration, CLI and data
 
-- [ ] **A real CLI.** Today the runner takes an argument array from user code. Autobahn should
+- [x] **A real CLI.** Today the runner takes an argument array from user code. Autobahn should
   ship a proper command-line front end: pointing at a test assembly or script, selecting
   target scenarios, overriding config and infra-config paths, choosing report formats and
-  output folder, setting log level, and controlling the web UI (section 8).
-- [ ] **Config layering with provenance.** Code defaults, JSON config, infra config,
+  output folder, setting log level, and controlling the web UI (section 8). *`autobahn run`
+  and `autobahn list` are in; controlling the web UI waits on section 8.*
+- [x] **Config layering with provenance.** Code defaults, JSON config, infra config,
   environment variables and CLI flags all contribute. Define the precedence order, document
   it, and be able to show the effective merged configuration with the source of each value —
   "why is the warm-up 30 seconds" should be answerable without reading three files.
-- [ ] **Custom settings.** Typed per-scenario custom settings from the config file, plus a
+- [x] **Custom settings.** Typed per-scenario custom settings from the config file, plus a
   global custom-settings section shared by all scenarios, so environment-specific values
   (URLs, credentials, dataset sizes) live in config rather than in code.
-- [ ] **Script support.** Run a load test from a single C# script file with no project — the
+- [x] **Script support.** Run a load test from a single C# script file with no project — the
   fastest possible path from "I want to hammer this endpoint" to results.
-- [ ] **Data feeds.** The existing feed abstraction (circular, constant, random over CSV, JSON
+- [x] **Data feeds.** The existing feed abstraction (circular, constant, random over CSV, JSON
   and in-memory sources) needs: batch feeds that hand an iteration a group of items rather
   than one, feeds that stream instead of loading a whole file into memory, and a clear story
-  for what happens when a finite feed is exhausted mid-run.
+  for what happens when a finite feed is exhausted mid-run. *Written from scratch rather
+  than ported: the fork point's F# feed module was not carried over.*
 
 ## 7. Ecosystem: protocol helpers and export
 

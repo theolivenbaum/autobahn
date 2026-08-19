@@ -17,6 +17,10 @@
 
     <ItemGroup>
         <ProjectReference Include="../../src/Autobahn/Autobahn.csproj" />
+        <!-- The CLI's argument parsing and scenario discovery are covered here rather than in
+             a project of their own: they are a hundred lines each, and a second test project
+             would double the build for them. -->
+        <ProjectReference Include="../../src/Autobahn.Cli/Autobahn.Cli.csproj" />
     </ItemGroup>
 
     <ItemGroup>

@@ -89,7 +89,8 @@ dotnet run --project examples/HelloWorld
 | **Worker plugin** | Background work that runs alongside the test and contributes its own stats (e.g. ping). |
 | **Threshold** | A pass/fail rule over the stats or the metrics, checked while the run happens. Its verdict is the process exit code. |
 | **Metric** | A named numeric series over the run — counter, gauge or histogram — for anything latency and throughput do not describe. |
-| **Report** | The end-of-run artifact: txt, csv, md, html. |
+| **Feed** | Where an iteration gets its data: circular, constant, random, batched or streaming, over CSV, JSON or a list. |
+| **Report** | The end-of-run artifact: json, txt, csv, md, html. |
 
 ## Load simulations
 
@@ -274,6 +275,83 @@ anything is worse than no gate.
 Thresholds are declarable in the JSON config too, so the same binary can be gated
 differently per environment (see below).
 
+## Data feeds
+
+A **feed** is where an iteration gets the data it works on. Three orders over any source:
+
+```csharp
+var users = Feed.Circular("users", FeedSource.FromCsv("users.csv", r => r["email"]));
+var host  = Feed.Constant("host", hosts);                       // one, chosen once
+var skus  = Feed.Random("skus", catalogue, seed: 42);           // uniform, reproducible
+var pages = Feed.Batch("pages", rows, batchSize: 50);           // a group per iteration
+var big   = Feed.Streaming("rows", FeedSource.StreamCsv("10m-rows.csv"));
+```
+
+`Feed.Circular` is the default choice: every item is used before any is reused. Reading one
+is a single interlocked increment, so every copy of a scenario can pull from the same feed
+without a lock. `Feed.Streaming` takes a lock per item — the price of not loading the file —
+and reopens its source through the factory when it restarts.
+
+**What happens when a finite feed runs out is stated, not assumed:**
+
+```csharp
+Feed.Circular("users", users, FeedExhaustion.Fail)   // Restart (default), Fail, StopScenario
+```
+
+Repeating the data quietly turns "each user is distinct" into a different test, so a feed
+that must not repeat says so and throws `FeedExhaustedException` instead.
+
+Sources are `FeedSource.FromCsv`, `FromJson`, `StreamCsv`, `StreamJson`, or any list you
+already have. CSV rows come back keyed by the header (case-insensitively) unless you hand
+over a mapping.
+
+## The `autobahn` command line
+
+A load test is still an ordinary .NET program that references the package and calls the
+runner. The tool is the other route: point it at something that *exposes* scenarios, and it
+builds the run around them so every option lives on the command line.
+
+```bash
+dotnet tool install -g Autobahn.Cli
+
+autobahn list ./bin/Release/net10.0/LoadTests.dll
+autobahn run  ./bin/Release/net10.0/LoadTests.dll -t checkout -f Json,Md -o ./reports
+autobahn run  ./checkout.csx --show-config --reporting-interval 00:00:10
+```
+
+**From an assembly**: a scenario source is a public static property, or a public static
+parameterless method, returning `ScenarioProps` or a sequence of them. Marking them
+`[ScenarioSource]` is optional but says which members you meant:
+
+```csharp
+public static class Scenarios
+{
+    [ScenarioSource]
+    public static ScenarioProps Checkout => Scenario.Create("checkout", …);
+}
+```
+
+**From a script**: one `.cs` or `.csx` file, no project, no build. Its last expression is
+what gets run, and `Autobahn`, `Autobahn.Feeds`, `Autobahn.Metrics` and `Autobahn.Thresholds`
+are already imported:
+
+```csharp
+// checkout.csx
+return Scenario.Create("checkout", async ctx =>
+    {
+        await Task.Delay(20, ctx.CancellationToken);
+        return Response.Ok(statusCode: "200");
+    })
+    .WithoutWarmUp()
+    .WithLoadSimulations(Simulation.Inject(rate: 50, interval: TimeSpan.FromSeconds(1), during: TimeSpan.FromMinutes(1)));
+```
+
+Exit codes are the contract: `0` ran and every threshold passed, `1` the command line or the
+run was wrong, `2` ran and a threshold failed. `AutobahnExitCode` has the same three for a
+program setting them itself.
+
+The terminal dashboard and the web UI are not wired up yet — see [TODO.md](TODO.md) section 8.
+
 ## Configuration
 
 Anything set in code can be overridden by a JSON config, so the same test binary can be
@@ -337,8 +415,41 @@ AutobahnRunner
     .Run(args);          // --config, --infra and --target also work from the command line
 ```
 
-`CustomSettings` is handed to the scenario's `Init` as an `IConfiguration`, so a scenario
-binds it to whatever shape it likes.
+`CustomSettings` is handed to the scenario's `Init` as an `IConfiguration`, and
+`GetCustomSettings<T>()` binds it to a type of your own. There is a **global**
+`CustomSettings` block too, which every scenario sees and which a scenario's own block
+overrides key by key — so a shared base URL is written once:
+
+```jsonc
+{
+  "GlobalSettings": {
+    "CustomSettings": { "TargetHost": "https://staging.example.com", "Tenant": "acme" },
+    "ScenariosSettings": [
+      { "ScenarioName": "add_to_basket", "CustomSettings": { "TargetHost": "https://basket.staging" } }
+    ]
+  }
+}
+```
+
+### Precedence
+
+Weakest to strongest: **defaults → code → JSON config → `AUTOBAHN_` environment variables →
+command line**. Environment variables cover the scalar settings a CI job wants to change per
+run (`AUTOBAHN_REPORT_FOLDER`, `AUTOBAHN_TARGET_SCENARIOS`, `AUTOBAHN_REPORT_FORMATS`,
+`AUTOBAHN_REPORTING_INTERVAL`, `AUTOBAHN_TEST_SUITE`, `AUTOBAHN_TEST_NAME`,
+`AUTOBAHN_REPORT_NAME`, `AUTOBAHN_ENABLE_HINTS`); a load plan or a threshold belongs in the
+config file, where it can be read.
+
+"Why is the report folder that?" is answerable from the run itself — `--show-config`, or
+`ShowEffectiveConfig()` in code, prints every effective setting and the layer it came from:
+
+```
+Effective configuration:
+  TestSuite            checkout                              [JsonConfig]
+  TargetScenarios      add_to_basket                         [CommandLine]
+  ReportFolder         ./reports                             [Environment]
+  ReportingInterval    00:00:05                              [Default]
+```
 
 ## Reports
 

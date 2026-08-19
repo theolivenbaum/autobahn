@@ -1,0 +1,33 @@
+using Microsoft.Extensions.Logging;
+using Autobahn.Stats;
+
+namespace Autobahn.Cli;
+
+/// <summary>What the command line asked for.</summary>
+internal sealed record CliOptions
+{
+    /// <summary>The verb: <c>run</c>, <c>list</c>, <c>help</c> or <c>version</c>.</summary>
+    public required string Command { get; init; }
+
+    /// <summary>The assembly or script holding the scenarios.</summary>
+    public string? Source { get; init; }
+
+    public IReadOnlyList<string> TargetScenarios { get; init; } = [];
+    public string? ConfigPath { get; init; }
+    public string? InfraConfigPath { get; init; }
+    public string? ReportFolder { get; init; }
+    public string? ReportFileName { get; init; }
+    public IReadOnlyList<ReportFormat> ReportFormats { get; init; } = [];
+    public TimeSpan? ReportingInterval { get; init; }
+    public LogLevel? MinimumLogLevel { get; init; }
+    public string? TestSuite { get; init; }
+    public string? TestName { get; init; }
+    public bool ShowConfig { get; init; }
+    public bool NoRuntimeMetrics { get; init; }
+    public bool NoReports { get; init; }
+
+    /// <summary>Set when the command line could not be understood; nothing else is valid then.</summary>
+    public string? Error { get; init; }
+
+    public static CliOptions Failed(string error) => new() { Command = "help", Error = error };
+}

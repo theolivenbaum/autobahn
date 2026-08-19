@@ -110,6 +110,7 @@ src/Autobahn/
   Thresholds/                               Threshold, ThresholdScope/Subject/Comparison
   Stats/                                    the records the reports and the API read
   Configuration/                            JSON config model (autobahn-config.json)
+  Feeds/                                    IFeed, Feed factories, FeedSource, FeedExhaustion
   Plugins/                                  IWorkerPlugin, Network/Ping + PsPing
   Internal/
     Result.cs, AppError.cs, *Error.cs       validation results and every user-facing message
@@ -124,11 +125,13 @@ src/Autobahn/
       Concurrency/                          ScenarioActor, ScenarioActorPool
       Metrics/                              the metric implementations, the registry, RuntimeMetrics
       Thresholds/                           ThresholdChecker, ThresholdState, subject reader, validation
+      Feeds/                                the feed implementations and their validation
       Scheduler/                            ConstantActorScheduler, OneTimeActorScheduler, ScenarioScheduler
       Stats/                                RawMeasurementStats, Statistics, ScenarioStatsActor
     Infra/                                  ConsoleRender, LoggerBuilder, GlobalDependency, HostInfoProvider
     Services/
-      ContextResolver.cs                    merges code config + JSON config + CLI args
+      ContextResolver.cs                    merges defaults + code + JSON config + env vars + CLI args
+      EnvironmentConfig.cs, ProvenanceLog.cs  the environment layer, and where each value came from
       SessionRunner.cs                      session entry point
       TestHost/                             TestHost, TestHostScenario, TestHostConsole, ReportingManager, WorkerPlugins
       Reports/                              Json (the run artifact), Txt, Csv, Md, Html, Console, TextTable, MarkdownDocument
@@ -267,9 +270,37 @@ is the file/user logger.
   `Constants.RunArtifactSchemaVersion`. It also serializes the session result *before*
   `Report.AppendGlobalInfoStep` folds the scenario's own numbers in as a pseudo-step — the
   artifact records the run as measured, not as the reports render it.
+- **Config precedence lives in one place and records itself.** `ContextResolver` resolves
+  defaults → code → JSON config → `AUTOBAHN_` env vars → CLI, and writes the winner into a
+  `ProvenanceLog` as it goes. Don't reconstruct provenance afterwards — that means writing
+  the precedence rules twice and having the two drift.
+- **A feed is read by every scenario copy at once.** The in-memory ones are lock-free by
+  construction (one interlocked increment over an array that is never written after
+  construction); anything added here has to keep that, or say plainly why it cannot, as
+  `StreamingFeed` does.
 - **Spectre needs a width when there is no terminal.** With output redirected it collapses
   every table to an ellipsis, which is exactly the CI-log case; `SessionRunner` sets a
   fixed width in that situation, and skips the live table entirely there.
+
+## The CLI
+
+`src/Autobahn.Cli` is a real front end now, not a skeleton: `autobahn run` and `autobahn list`
+point at a built assembly or a single C# script and build the run around the scenarios it
+exposes. `Autobahn.Cli.csproj` still packs as the `autobahn` dotnet tool.
+
+- **Its assembly is `Autobahn.Cli`, not `autobahn`.** Assembly identities are compared
+  case-insensitively, so an assembly named `autobahn` shadows the engine's `Autobahn` and
+  every engine type fails to load at runtime. The command is `autobahn` because of
+  `ToolCommandName`, which is unrelated. Don't "fix" the assembly name to match the command.
+- Assembly discovery loads the target in its own `AssemblyLoadContext` with an
+  `AssemblyDependencyResolver`, so the target's dependencies win over the tool's — except
+  `Autobahn` itself, which is deliberately not redirected: the two have to agree on
+  `ScenarioProps` or nothing found could be run.
+- Scripts go through Roslyn (`Microsoft.CodeAnalysis.CSharp.Scripting`). The script's last
+  expression is its result and must be a `ScenarioProps` or a sequence of them.
+- Unlike `CommandLineArgs` (the in-process parser, where an unknown argument belongs to the
+  test runner and must be ignored), `CliParser` treats an unknown option as an error. At a
+  prompt a mistyped flag that silently does nothing is worse than one that stops.
 
 ## Conventions
 

@@ -8,7 +8,11 @@
     <PropertyGroup>
         <OutputType>Exe</OutputType>
         <RootNamespace>Autobahn.Cli</RootNamespace>
-        <AssemblyName>autobahn</AssemblyName>
+        <!-- Not "autobahn": assembly identities are compared case-insensitively, so an
+             assembly called that would shadow the engine's own "Autobahn" and every engine
+             type would fail to load. The command is still "autobahn" - that is
+             ToolCommandName, which has nothing to do with the assembly name. -->
+        <AssemblyName>Autobahn.Cli</AssemblyName>
 
         <PackAsTool>true</PackAsTool>
         <ToolCommandName>autobahn</ToolCommandName>
@@ -32,11 +36,16 @@
     <ItemGroup>
         <!-- Referenced ahead of use: the terminal dashboard is the next thing this project
              grows, and pinning the version now keeps the tool's dependency set decided. -->
+        <PackageReference Include="Microsoft.CodeAnalysis.CSharp.Scripting" Version="5.9.0" />
         <PackageReference Include="Terminal.Gui" Version="2.4.17" />
     </ItemGroup>
 
     <ItemGroup>
         <ProjectReference Include="../Autobahn/Autobahn.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="Autobahn.Tests" />
     </ItemGroup>
 
 </Project>
