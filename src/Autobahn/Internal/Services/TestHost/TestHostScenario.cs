@@ -12,7 +12,8 @@ internal static class TestHostScenario
         SessionArgs sessionArgs, IReadOnlyList<RuntimeScenario> regScenarios) =>
         ScenarioFactory.ApplySettings(
             sessionArgs.ScenariosSettings,
-            ScenarioFactory.FilterTargetScenarios(sessionArgs.TargetScenarios, regScenarios));
+            ScenarioFactory.FilterTargetScenarios(sessionArgs.TargetScenarios, regScenarios),
+            sessionArgs.GlobalCustomSettings);
 
     public static async Task<Result<List<RuntimeScenario>>> InitScenarios(
         IGlobalDependency dep,
@@ -36,7 +37,7 @@ internal static class TestHostScenario
                 var scnInfo = ScenarioFactory.CreateScenarioInfo(
                     scn.ScenarioName, scn.PlanedDuration, 0, scn.MaxCopiesCount, ScenarioOperation.Init);
 
-                var initScnContext = ScenarioFactory.CreateInitContext(scnInfo, baseContext, scn.CustomSettings);
+                var initScnContext = ScenarioFactory.CreateInitContext(scnInfo, baseContext, scn.CustomSettings, scn.GlobalCustomSettings);
 
                 if (consoleStatus is not null)
                 {
@@ -117,7 +118,7 @@ internal static class TestHostScenario
             var scnInfo = ScenarioFactory.CreateScenarioInfo(
                 scn.ScenarioName, scn.GetExecutedDuration(), 0, scn.MaxCopiesCount, ScenarioOperation.Clean);
 
-            var cleanScnContext = ScenarioFactory.CreateInitContext(scnInfo, baseContext, scn.CustomSettings);
+            var cleanScnContext = ScenarioFactory.CreateInitContext(scnInfo, baseContext, scn.CustomSettings, scn.GlobalCustomSettings);
 
             try
             {

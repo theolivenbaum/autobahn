@@ -153,12 +153,16 @@ internal static class ScenarioFactory
 
     /// <summary>Overlays the JSON config's per-scenario settings onto the scenarios that match by name.</summary>
     public static List<RuntimeScenario> ApplySettings(
-        IReadOnlyList<ScenarioSetting> settings, IEnumerable<RuntimeScenario> scenarios)
+        IReadOnlyList<ScenarioSetting> settings,
+        IEnumerable<RuntimeScenario> scenarios,
+        string globalCustomSettings = "")
     {
         return scenarios.Select(scenario =>
         {
             var setting = settings.FirstOrDefault(x => x.ScenarioName == scenario.ScenarioName);
-            return setting is null ? scenario : Apply(scenario, setting);
+            var withGlobal = scenario with { GlobalCustomSettings = globalCustomSettings };
+
+            return setting is null ? withGlobal : Apply(withGlobal, setting);
         }).ToList();
 
         static RuntimeScenario Apply(RuntimeScenario scenario, ScenarioSetting settings)
@@ -214,21 +218,44 @@ internal static class ScenarioFactory
 
     /// <summary>Builds the context a scenario's init and clean functions receive.</summary>
     public static IScenarioInitContext CreateInitContext(
-        ScenarioInfo scnInfo, IBaseContext context, string customSettings) =>
-        new ScenarioInitContext(scnInfo, context, ParseCustomSettings(customSettings));
+        ScenarioInfo scnInfo, IBaseContext context, string customSettings, string globalCustomSettings = "") =>
+        new ScenarioInitContext(scnInfo, context, ParseCustomSettings(customSettings, globalCustomSettings));
 
-    private static IConfiguration ParseCustomSettings(string settings)
+    /// <summary>
+    /// The scenario's own settings layered over the run-wide ones, as one configuration.
+    /// </summary>
+    /// <remarks>
+    /// Later sources win in <c>IConfiguration</c>, so the scenario's own block is added last:
+    /// a shared base URL in the global block is overridden by a scenario that needs a
+    /// different one, without the scenario having to repeat everything else.
+    /// </remarks>
+    private static IConfiguration ParseCustomSettings(string settings, string globalSettings)
     {
-        try
+        var builder = new ConfigurationBuilder();
+
+        AddJson(builder, globalSettings);
+        AddJson(builder, settings);
+
+        return builder.Build();
+
+        static void AddJson(IConfigurationBuilder builder, string json)
         {
-            using var stream = new MemoryStream(Encoding.UTF8.GetBytes(settings));
-            return new ConfigurationBuilder().AddJsonStream(stream).Build();
-        }
-        catch
-        {
-            // A scenario with no custom settings, or with settings that are not valid JSON,
-            // gets an empty configuration rather than a failed run.
-            return new ConfigurationBuilder().Build();
+            if (string.IsNullOrWhiteSpace(json)) return;
+
+            try
+            {
+                // Parsed here rather than left to Build(): a stream provider does not read
+                // until the whole configuration is built, so a malformed block would take the
+                // valid one beside it down with it. Settings that are not JSON contribute
+                // nothing instead, and the scenario sees its own defaults.
+                using (System.Text.Json.JsonDocument.Parse(json)) { }
+            }
+            catch (System.Text.Json.JsonException)
+            {
+                return;
+            }
+
+            builder.AddJsonStream(new MemoryStream(Encoding.UTF8.GetBytes(json)));
         }
     }
 
@@ -255,5 +282,12 @@ internal static class ScenarioFactory
         public IConfiguration CustomSettings => customSettings;
         public ILogger Logger => context.Logger;
         public IMetricRegistry Metrics => context.Metrics;
+
+        public T GetCustomSettings<T>() where T : new()
+        {
+            var settings = new T();
+            customSettings.Bind(settings);
+            return settings;
+        }
     }
 }

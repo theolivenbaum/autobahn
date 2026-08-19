@@ -63,6 +63,12 @@ public sealed record AutobahnContext
     /// </summary>
     public required bool EnableThresholdExitCode { get; init; }
 
+    /// <summary>
+    /// Whether the run prints every effective setting and the layer its value came from
+    /// before it starts. Off by default; also turned on by <c>--show-config</c>.
+    /// </summary>
+    public required bool ShowEffectiveConfig { get; init; }
+
     public static AutobahnContext Empty { get; } = new()
     {
         TestSuite = Constants.DefaultTestSuite,
@@ -87,6 +93,7 @@ public sealed record AutobahnContext
         EnableCancelKeyPress = true,
         EnableRuntimeMetrics = true,
         Thresholds = [],
-        EnableThresholdExitCode = true
+        EnableThresholdExitCode = true,
+        ShowEffectiveConfig = false
     };
 }

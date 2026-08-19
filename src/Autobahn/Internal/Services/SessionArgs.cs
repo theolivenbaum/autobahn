@@ -37,6 +37,15 @@ internal sealed record SessionArgs
     /// <summary>Whether a failed threshold sets a non-zero process exit code.</summary>
     public required bool EnableThresholdExitCode { get; init; }
 
+    /// <summary>The run-wide CustomSettings block, which each scenario's own overrides.</summary>
+    public string GlobalCustomSettings { get; init; } = string.Empty;
+
+    /// <summary>Each resolved setting and the layer its value came from.</summary>
+    public IReadOnlyList<EffectiveSetting> EffectiveSettings { get; init; } = [];
+
+    /// <summary>Whether to print the above before the run starts.</summary>
+    public bool ShowEffectiveConfig { get; init; }
+
     public static SessionArgs Empty { get; } = new()
     {
         TestInfo = TestInfo.Empty,

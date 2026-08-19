@@ -32,6 +32,25 @@ internal static class TestHostConsole
         return AnsiConsole.Status().StartAsync(msg, ctx => runAction(ctx));
     }
 
+    /// <summary>
+    /// Every effective setting and the layer its value came from.
+    /// </summary>
+    /// <remarks>
+    /// Printed through the ordinary logger rather than as a table, so it lands in the log file
+    /// too - which is where somebody reading a CI run afterwards will look for it.
+    /// </remarks>
+    public static void PrintEffectiveConfig(IGlobalDependency dep, SessionArgs sessionArgs)
+    {
+        if (sessionArgs.EffectiveSettings.Count == 0) return;
+
+        dep.LogInfo("Effective configuration:");
+
+        var width = sessionArgs.EffectiveSettings.Max(x => x.Name.Length);
+
+        foreach (var setting in sessionArgs.EffectiveSettings)
+            dep.LogInfo($"  {setting.Name.PadRight(width)}  {setting.Value}  [{setting.Source}]");
+    }
+
     public static void PrintContextInfo(IGlobalDependency dep, SessionArgs sessionArgs)
     {
         dep.LogInfo($"Reports folder: {ReportHelper.GetFullReportsFolderPath(sessionArgs)}");
@@ -153,6 +172,35 @@ internal static class TestHostConsole
                 ? new TableTitle($"duration: ({elapsed:hh\\:mm\\:ss} - {max:hh\\:mm\\:ss})")
                 : new TableTitle($"duration: ({elapsed:hh\\:mm\\:ss})");
 
+        /// <summary>
+        /// One interval's numbers as plain log lines, for when there is no terminal to draw a
+        /// table on.
+        /// </summary>
+        /// <remarks>
+        /// A CI log is the case that matters most and the one a live table serves worst: it
+        /// scrolls, it has no cursor to move, and a redrawn table becomes hundreds of
+        /// near-identical frames. So the same information goes out one line per scenario,
+        /// through the ordinary logger, which is also what keeps it in the log file.
+        /// </remarks>
+        public static void PrintIntervalProgress(
+            IGlobalDependency dep, TimeSpan elapsed, IReadOnlyList<ScenarioStats> scenariosStats)
+        {
+            if (dep.ApplicationType == ApplicationType.Console) return;
+
+            foreach (var scn in scenariosStats)
+            {
+                var ok = scn.Ok.Request;
+                var fail = scn.Fail.Request;
+                var latency = scn.Ok.Latency;
+
+                dep.LogInfo(
+                    $"[{elapsed:hh\\:mm\\:ss}] {scn.ScenarioName}: "
+                    + $"{scn.LoadSimulationStats.SimulationName} {scn.LoadSimulationStats.Value}, "
+                    + $"ok {ok.Count} ({ok.RPS}/s), fail {fail.Count} ({fail.RPS}/s), "
+                    + $"p50 {latency.Percent50} ms, p99 {latency.Percent99} ms");
+            }
+        }
+
         public static void Display(
             IGlobalDependency dep,
             CancellationToken cancelToken,
@@ -171,6 +219,10 @@ internal static class TestHostConsole
             liveTable.AutoClear = false;
             liveTable.Overflow = VerticalOverflow.Ellipsis;
             liveTable.Cropping = VerticalOverflowCropping.Bottom;
+
+            // Nothing else may write to the terminal until the table comes down; log lines
+            // raised in the meantime are replayed underneath it rather than through it.
+            ConsoleRender.BeginLiveDisplay();
 
             var stopWatch = Stopwatch.StartNew();
             var refreshTableCounter = 0;
@@ -218,7 +270,11 @@ internal static class TestHostConsole
 
                 table.Title = DurationTitle(maxDuration ?? stopWatch.Elapsed, maxDuration);
                 ctx.Refresh();
-            });
+            }).ContinueWith(
+                static _ => ConsoleRender.EndLiveDisplay(),
+                CancellationToken.None,
+                TaskContinuationOptions.ExecuteSynchronously,
+                TaskScheduler.Default);
         }
     }
 }

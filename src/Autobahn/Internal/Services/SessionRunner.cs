@@ -8,7 +8,11 @@ namespace Autobahn.Internal.Services;
 internal static class SessionRunner
 {
     public static async Task<Result<SessionResult>> RunSession(
-        TestInfo testInfo, HostInfo hostInfo, AutobahnContext context, IGlobalDependency dep)
+        TestInfo testInfo,
+        HostInfo hostInfo,
+        AutobahnContext context,
+        IGlobalDependency dep,
+        ProvenanceLog? provenance = null)
     {
         if (dep.ApplicationType == ApplicationType.Console)
         {
@@ -26,7 +30,7 @@ internal static class SessionRunner
         var scenarios = ContextResolver.CreateScenarios(context);
         if (scenarios.IsError) return Result<SessionResult>.Fail(scenarios.Error);
 
-        var sessionArgs = ContextResolver.CreateSessionArgs(testInfo, context);
+        var sessionArgs = ContextResolver.CreateSessionArgs(testInfo, context, provenance);
         if (sessionArgs.IsError) return Result<SessionResult>.Fail(sessionArgs.Error);
 
         using var testHost = new TestHost.TestHost(dep, scenarios.Value);
@@ -76,11 +80,13 @@ internal static class SessionRunner
 
     public static Result<SessionResult> Run(bool disposeLogger, AutobahnContext context)
     {
+        var provenance = new ProvenanceLog();
+
         var testInfo = new TestInfo
         {
             SessionId = HostInfoProvider.CreateSessionId(),
-            TestSuite = ContextResolver.GetTestSuite(context),
-            TestName = ContextResolver.GetTestName(context)
+            TestSuite = ContextResolver.GetTestSuite(context, provenance),
+            TestName = ContextResolver.GetTestName(context, provenance)
         };
 
         var hostInfo = HostInfoProvider.Init();
@@ -92,7 +98,7 @@ internal static class SessionRunner
 
         try
         {
-            var result = RunSession(testInfo, hostInfo, context, dep).GetAwaiter().GetResult();
+            var result = RunSession(testInfo, hostInfo, context, dep, provenance).GetAwaiter().GetResult();
 
             if (result.IsError) dep.LogError(result.Error.Message);
 

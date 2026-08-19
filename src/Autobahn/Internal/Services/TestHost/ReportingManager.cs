@@ -88,10 +88,16 @@ internal sealed class ReportingManager : IReportingManager
         // interval's stats actually exist, which is why it happens in the continuation.
         _ = Task.WhenAll(_schedulers.Select(x => x.BuildRealtimeStats(duration)))
             .ContinueWith(
-                task => CheckThresholds(duration, task, metrics),
+                task => OnIntervalClosed(duration, task, metrics),
                 CancellationToken.None,
                 TaskContinuationOptions.OnlyOnRanToCompletion | TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);
+    }
+
+    private void OnIntervalClosed(TimeSpan duration, Task<ScenarioStats[]> statsTask, MetricStats[] metrics)
+    {
+        TestHostConsole.LiveStatusTable.PrintIntervalProgress(_dep, duration, statsTask.Result);
+        CheckThresholds(duration, statsTask, metrics);
     }
 
     private void CheckThresholds(TimeSpan duration, Task<ScenarioStats[]> statsTask, MetricStats[] metrics)
@@ -114,16 +120,35 @@ internal sealed class ReportingManager : IReportingManager
         }
     }
 
-    public async Task Start()
+    /// <summary>
+    /// Starts ticking with the run, not a few seconds into it.
+    /// </summary>
+    /// <remarks>
+    /// The fork point waited three seconds first, which put every data point three seconds out
+    /// of step with its own label and made the first window cover eight seconds of traffic
+    /// while claiming to cover five. Starting immediately means tick N happens N intervals in
+    /// and is labelled N intervals, which is the only way two data points are comparable.
+    /// </remarks>
+    public Task Start()
     {
-        await Task.Delay(Constants.ReportingManagerStartDelay).ConfigureAwait(false);
         _buildRealtimeStatsTimer.Start();
+        return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// Stops ticking, then waits just long enough for measurements already in flight to reach
+    /// the stats actor before the final statistics are built.
+    /// </summary>
+    /// <remarks>
+    /// Stopping the timer first is what makes the last window honest: a tick fired after the
+    /// run ended would emit a partial window labelled as a full one. Whatever traffic falls
+    /// inside that partial window is still counted - it is in the global accumulator the final
+    /// report reads, just not in the timeline as an interval it did not fill.
+    /// </remarks>
     public async Task Stop()
     {
-        await Task.Delay(Constants.ReportingManagerStartDelay).ConfigureAwait(false);
         _buildRealtimeStatsTimer.Stop();
+        await Task.Delay(Constants.ReportingManagerDrainDelay).ConfigureAwait(false);
     }
 
     public async Task<SessionResult> GetSessionResult(HostInfo hostInfo)

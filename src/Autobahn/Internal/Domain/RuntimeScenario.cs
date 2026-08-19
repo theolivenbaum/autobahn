@@ -18,7 +18,11 @@ internal sealed record RuntimeScenario
     /// <summary>Set once the scenario stops; null while it is still running.</summary>
     public TimeSpan? ExecutedDuration { get; init; }
 
+    /// <summary>This scenario's own CustomSettings block from the config, as raw JSON.</summary>
     public required string CustomSettings { get; init; }
+
+    /// <summary>The run-wide CustomSettings block, which this scenario's own overrides.</summary>
+    public string GlobalCustomSettings { get; init; } = string.Empty;
     public required bool IsInitialized { get; init; }
     public required bool RestartIterationOnFail { get; init; }
     public required int MaxFailCount { get; init; }

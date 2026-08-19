@@ -131,7 +131,7 @@ src/Autobahn/
       ContextResolver.cs                    merges code config + JSON config + CLI args
       SessionRunner.cs                      session entry point
       TestHost/                             TestHost, TestHostScenario, TestHostConsole, ReportingManager, WorkerPlugins
-      Reports/                              Txt, Csv, Md, Html, Console, TextTable, MarkdownDocument
+      Reports/                              Json (the run artifact), Txt, Csv, Md, Html, Console, TextTable, MarkdownDocument
   Resources/HtmlReport/                     embedded html/css/js for the static report
 ```
 
@@ -252,9 +252,24 @@ is the file/user logger.
   property silently breaks `Resources/HtmlReport/index.html` and its `index.js`, which
   address those names as strings. `ReportingTests` checks the document is assembled, not
   that every field is bound — read the template when you rename.
+- **The live table owns the terminal while it is up.** Spectre's live display redraws in
+  place and cannot let another writer put a line above it, so `ConsoleRender` holds console
+  writes between `BeginLiveDisplay` and `EndLiveDisplay` and replays them after. Anything
+  that writes to the console must go through `ConsoleRender.Render` or
+  `ConsoleRender.WriteOrDefer` — an `AnsiConsole.Write` straight from somewhere else will
+  land in the middle of the table. The file log is never deferred.
+- **The reporting timer starts with the run.** It used to wait three seconds, which put every
+  interval three seconds out of step with its own label. Don't reintroduce a start delay;
+  `ReportingManagerDrainDelay` is a stop-side drain for in-flight mailbox messages and must
+  stay far shorter than a reporting interval.
+- **The run artifact is versioned, the renderings are not.** `RunArtifact` is what the UI and
+  run-to-run comparison read, so removing a field or changing its meaning means bumping
+  `Constants.RunArtifactSchemaVersion`. It also serializes the session result *before*
+  `Report.AppendGlobalInfoStep` folds the scenario's own numbers in as a pseudo-step — the
+  artifact records the run as measured, not as the reports render it.
 - **Spectre needs a width when there is no terminal.** With output redirected it collapses
   every table to an ellipsis, which is exactly the CI-log case; `SessionRunner` sets a
-  fixed width in that situation. Rendering plain lines instead is TODO.md section 5.
+  fixed width in that situation, and skips the live table entirely there.
 
 ## Conventions
 

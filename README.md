@@ -340,6 +340,43 @@ AutobahnRunner
 `CustomSettings` is handed to the scenario's `Init` as an `IConfiguration`, so a scenario
 binds it to whatever shape it likes.
 
+## Reports
+
+Five formats, all written to `./reports/{sessionId}/` unless you pin a folder:
+
+| Format | What it is |
+|--|--|
+| `Json` | **The run artifact.** The whole result as one versioned, machine-readable document. |
+| `Html` | A self-contained page: every asset inlined, the result embedded as its view model. |
+| `Txt` | The console summary, as a file. |
+| `Md` | The one that pastes into a pull request. |
+| `Csv` | One row per step, plus `_metrics.csv` and `_thresholds.csv` beside it. |
+
+The **run artifact** is the primary one — the UI replays it, run-to-run comparison consumes
+it, and a CI job asserts against it. Everything else is a rendering of the same data:
+
+```jsonc
+{
+  "SchemaVersion": 1,
+  "Producer": "Autobahn 0.1.0",
+  "CompletedAt": "2026-08-19T10:14:03.5+00:00",
+  "Result": { "FinalStats": { … }, "TimeLineHistory": [ … ], "Hints": [ … ] },
+  "Plans": [ { "ScenarioName": "checkout", "LoadSimulations": [ … ] } ]
+}
+```
+
+`SchemaVersion` is bumped when a field is removed or its meaning changes; adding one does
+not bump it, so a reader that ignores unknown fields keeps working.
+
+Autobahn only deletes files it wrote itself, and only its own log files — a pinned
+`WithReportFolder` accumulates reports under their timestamped names rather than being
+emptied on every run.
+
+**Without a terminal** — a CI log — there is no live table: interval progress goes out as
+one plain line per scenario through the ordinary logger, so it is in the log file too. With
+a terminal, the live table owns the screen while it is up and log lines raised in the
+meantime are replayed underneath it rather than drawn through it.
+
 ## Logging
 
 Logging is [Microsoft.Extensions.Logging](https://learn.microsoft.com/dotnet/core/extensions/logging)

@@ -44,21 +44,22 @@ public class ReportingTests
 
         var files = Directory.GetFiles(folder, "*.*", SearchOption.TopDirectoryOnly).Select(x => new FileInfo(x)).ToArray();
 
-        // Four report formats, the metrics CSV that rides alongside the step one, and the
-        // run's own log file.
-        await Assert.That(files.Length).IsEqualTo(6);
+        // Five report formats, the metrics and threshold CSVs that ride alongside the step
+        // one, and the run's own log file. The threshold CSV is absent: this run declared none.
+        await Assert.That(files.Length).IsEqualTo(7);
         await Assert.That(files.Count(x => x.Name.EndsWith("_metrics.csv"))).IsEqualTo(1);
+        await Assert.That(files.Count(x => x.Name.EndsWith("_thresholds.csv"))).IsEqualTo(0);
 
         foreach (var file in files)
         {
             await Assert.That(file.Name.Contains("custom_report_name") || file.Name.Contains(Constants.LogFilePrefix))
                 .IsTrue();
 
-            await Assert.That(new[] { ".html", ".csv", ".txt", ".md" }).Contains(file.Extension);
+            await Assert.That(new[] { ".html", ".csv", ".txt", ".md", ".json" }).Contains(file.Extension);
             await Assert.That(file.Length).IsGreaterThan(0L);
         }
 
-        await Assert.That(stats.ReportFiles.Length).IsEqualTo(5);
+        await Assert.That(stats.ReportFiles.Length).IsEqualTo(6);
 
         // Every format renders; none of them falls back to the "could not generate" text.
         foreach (var report in stats.ReportFiles)

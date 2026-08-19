@@ -107,6 +107,7 @@ internal sealed class TestHost : IDisposable
         _currentOperation = OperationType.Init;
 
         TestHostConsole.PrintContextInfo(_dep, sessionArgs);
+        if (sessionArgs.ShowEffectiveConfig) TestHostConsole.PrintEffectiveConfig(_dep, sessionArgs);
         _dep.LogInfo("Starting init...");
 
         return TestHostConsole.DisplayStatus(_dep, "Initializing scenarios...", async consoleStatus =>

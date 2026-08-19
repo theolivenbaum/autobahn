@@ -7,8 +7,11 @@ internal sealed record CommandLineArgs
     public string? InfraConfig { get; init; }
     public IReadOnlyList<string> TargetScenarios { get; init; } = [];
 
+    /// <summary>Print every effective setting and where it came from, then run as usual.</summary>
+    public bool ShowConfig { get; init; }
+
     /// <summary>
-    /// Parses <c>-c/--config</c>, <c>-i/--infra</c> and <c>-t/--target</c>.
+    /// Parses <c>-c/--config</c>, <c>-i/--infra</c>, <c>-t/--target</c> and <c>--show-config</c>.
     /// </summary>
     /// <remarks>
     /// Hand-written rather than delegating to a parser package: three options do not justify
@@ -21,6 +24,7 @@ internal sealed record CommandLineArgs
         string? config = null;
         string? infraConfig = null;
         var targets = new List<string>();
+        var showConfig = false;
 
         for (var i = 0; i < args.Count; i++)
         {
@@ -42,10 +46,20 @@ internal sealed record CommandLineArgs
                     var target = inlineValue ?? Next(args, ref i);
                     if (!string.IsNullOrWhiteSpace(target)) targets.Add(target);
                     break;
+
+                case "--show-config":
+                    showConfig = true;
+                    break;
             }
         }
 
-        return new CommandLineArgs { Config = config, InfraConfig = infraConfig, TargetScenarios = targets };
+        return new CommandLineArgs
+        {
+            Config = config,
+            InfraConfig = infraConfig,
+            TargetScenarios = targets,
+            ShowConfig = showConfig
+        };
     }
 
     /// <summary>Supports both <c>--config value</c> and <c>--config=value</c>.</summary>

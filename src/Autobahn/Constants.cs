@@ -11,7 +11,13 @@ internal static class Constants
     public const int DefaultCopiesCount = 1;
 
     public static readonly ReportFormat[] AllReportFormats =
-        [ReportFormat.Txt, ReportFormat.Html, ReportFormat.Csv, ReportFormat.Md];
+        [ReportFormat.Txt, ReportFormat.Html, ReportFormat.Csv, ReportFormat.Md, ReportFormat.Json];
+
+    /// <summary>
+    /// The shape of the run artifact. Bumped when a field is removed or its meaning changes;
+    /// adding one does not bump it, because a reader that ignores unknown fields still works.
+    /// </summary>
+    public const int RunArtifactSchemaVersion = 1;
 
     public const string DefaultTestSuite = "autobahn_default_test_suite_name";
     public const string DefaultTestName = "autobahn_default_test_name";
@@ -31,7 +37,13 @@ internal static class Constants
     public static readonly TimeSpan DefaultReportingInterval = TimeSpan.FromSeconds(5);
     public static readonly TimeSpan GetPluginStatsTimeout = TimeSpan.FromSeconds(5);
     public static readonly TimeSpan OneSecond = TimeSpan.FromSeconds(1);
-    public static readonly TimeSpan ReportingManagerStartDelay = TimeSpan.FromSeconds(3);
+    /// <summary>
+    /// How long the reporting manager waits after stopping its timer, so measurements already
+    /// in the stats actor's mailbox land before the final statistics are built. Deliberately
+    /// short: it is a drain, not a reporting interval, and it must never be long enough for
+    /// another tick to fire.
+    /// </summary>
+    public static readonly TimeSpan ReportingManagerDrainDelay = TimeSpan.FromMilliseconds(250);
 
     /// <summary>10 minutes, in ticks.</summary>
     public const long MaxTrackableStepLatency = 1000L * TimeSpan.TicksPerMillisecond * 60L * 10L;

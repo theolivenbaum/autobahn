@@ -147,6 +147,14 @@ public static class AutobahnRunner
         context with { CancellationToken = cancellationToken };
 
     /// <summary>
+    /// Prints every effective setting and the layer its value came from before the run starts,
+    /// so "why is the report folder that" is answerable without reading three files. The same
+    /// thing happens when the command line carries <c>--show-config</c>.
+    /// </summary>
+    public static AutobahnContext ShowEffectiveConfig(this AutobahnContext context) =>
+        context with { ShowEffectiveConfig = true };
+
+    /// <summary>
     /// Adds pass/fail rules to the run. They are checked on every reporting interval and again
     /// at the end; a rule that fails fails the run, and one built with <c>AbortingAfter</c>
     /// ends it early.
@@ -178,8 +186,8 @@ public static class AutobahnRunner
         context with { EnableCancelKeyPress = false };
 
     /// <summary>
-    /// Applies command-line arguments over the context: <c>-c/--config</c>, <c>-i/--infra</c>
-    /// and <c>-t/--target</c>.
+    /// Applies command-line arguments over the context: <c>-c/--config</c>, <c>-i/--infra</c>,
+    /// <c>-t/--target</c> and <c>--show-config</c>.
     /// </summary>
     internal static AutobahnContext ExecuteCliArgs(this AutobahnContext context, IReadOnlyList<string> args)
     {
@@ -190,6 +198,8 @@ public static class AutobahnRunner
 
         if (cliArgs.TargetScenarios.Count > 0)
             context = ContextResolver.SetTargetScenarios(cliArgs.TargetScenarios, context);
+
+        if (cliArgs.ShowConfig) context = context.ShowEffectiveConfig();
 
         return context;
     }
