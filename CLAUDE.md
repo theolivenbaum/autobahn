@@ -65,6 +65,17 @@ six protocol/export packages (`Autobahn.Http`, `Autobahn.WebSockets`, `Autobahn.
 all of which build from a clean clone. Adding a project that cannot build from a clean clone breaks the plain command for
 everyone.
 
+**"Builds from a clean clone" means a clone, not this working tree.** The stock ignore rules
+match at any depth, so `[Rr]eports/` — meant for the folder a run writes its reports into —
+also matched `src/Autobahn/Internal/Services/Reports/`, where the engine's own report writers
+live. Eleven source files were never committed and nobody noticed, because every build ran
+against a tree that had them on disk. The `!src/**/…` negations in `.gitignore` are what stop
+that, and they only help for names somebody thought of.
+
+So the check is not "does it build" but "can git see it". Before pushing anything that adds a
+folder: `git status --ignored --porcelain | grep '^!!'` lists what is being hidden, and a
+`git clone` into a temp folder followed by `dotnet build` is what actually proves the claim.
+
 The tests run on **TUnit**, on Microsoft.Testing.Platform. `global.json` opts `dotnet test`
 into that runner (`"test": { "runner": "Microsoft.Testing.Platform" }`); without it the
 .NET 10 SDK tries VSTest and fails. Most tests really do run short load tests in process,
