@@ -20,7 +20,7 @@ trigger:
 # Linux, unlike the hnsw pipeline: the UI staging step is a bash script, and the test suite
 # spends its time in Task.Delay rather than in anything platform-specific.
 pool:
-  vmImage: 'ubuntu-latest'
+  vmImage: 'ubuntu-22.04'
 
 steps:
 - task: Bash@3
